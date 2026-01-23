@@ -1,0 +1,340 @@
+# F5 BIG-IP Health Monitors Guide
+
+## Introduction
+
+Health monitors are critical components that verify the availability and functionality of pool members. They continuously check server health and automatically remove failed servers from the load balancing rotation, ensuring traffic only goes to healthy resources.
+
+## Monitor Types
+
+### Layer 3-4 Monitors
+
+#### ICMP (Ping)
+Basic connectivity check using ICMP echo requests.
+- Use case: Verify network reachability
+- Limitation: Doesn't verify application health
+
+#### TCP
+Establishes TCP connection to verify port availability.
+- Use case: Basic port availability check
+- Limitation: Doesn't verify application response
+
+#### TCP Half-Open
+Sends SYN, waits for SYN-ACK, then sends RST.
+- Use case: Lower overhead than full TCP
+- Limitation: Some servers may log connection resets
+
+#### UDP
+Sends UDP packet and checks for response.
+- Use case: UDP services like DNS
+- Note: Requires expected response configuration
+
+### Layer 7 Monitors
+
+#### HTTP
+Sends HTTP request and validates response.
+- Verifies: Status code, content
+- Use case: Web servers, REST APIs
+
+#### HTTPS
+HTTP monitor over SSL/TLS connection.
+- Verifies: SSL handshake, HTTP response
+- Use case: Secure web applications
+
+#### HTTP2
+HTTP/2 protocol health check.
+- Verifies: HTTP/2 specific response
+- Use case: HTTP/2 enabled servers
+
+### Application-Specific Monitors
+
+#### LDAP
+Monitors LDAP directory servers.
+- Sends: LDAP query
+- Verifies: Query response
+
+#### MySQL/MSSQL/PostgreSQL/Oracle
+Database-specific monitors.
+- Sends: Database query
+- Verifies: Query execution success
+
+#### SMTP
+Email server monitoring.
+- Sends: SMTP commands
+- Verifies: Proper SMTP response codes
+
+#### SIP
+Session Initiation Protocol monitor.
+- Use case: VoIP infrastructure
+
+#### FTP
+File Transfer Protocol monitor.
+- Verifies: FTP service availability
+
+### External Monitors
+
+Custom scripts for complex health checks.
+- Language: Any executable script
+- Use case: Custom application validation
+- Location: /usr/bin/monitors/ or /config/monitors/
+
+## Monitor Configuration
+
+### Essential Parameters
+
+#### Interval
+Time between health checks.
+- Default: 5 seconds (HTTP)
+- Recommendation: Balance between responsiveness and load
+
+#### Timeout
+Time to wait for response.
+- Must be: Less than interval × (retry + 1)
+- Default: 16 seconds (HTTP)
+
+#### Send String
+Data sent to the pool member.
+```
+# HTTP GET request
+GET /health HTTP/1.1\r\nHost: example.com\r\nConnection: Close\r\n\r\n
+```
+
+#### Receive String
+Expected response content (regex supported).
+```
+# Match "OK" anywhere in response
+OK
+
+# Match status 200 exactly
+^HTTP/1.[01] 200
+```
+
+#### Receive Disable String
+String that marks member for graceful disable.
+```
+MAINTENANCE
+```
+
+### TMSH Configuration Examples
+
+```bash
+# Create HTTP monitor
+tmsh create ltm monitor http my_http_monitor {
+    defaults-from http
+    interval 10
+    timeout 31
+    send "GET /health HTTP/1.1\r\nHost: app.example.com\r\nConnection: Close\r\n\r\n"
+    recv "status.*UP"
+}
+
+# Create HTTPS monitor
+tmsh create ltm monitor https my_https_monitor {
+    defaults-from https
+    interval 15
+    timeout 46
+    send "GET /api/health HTTP/1.1\r\nHost: api.example.com\r\n\r\n"
+    recv "200 OK"
+    ssl-profile serverssl
+}
+
+# Create TCP monitor
+tmsh create ltm monitor tcp my_tcp_monitor {
+    defaults-from tcp
+    interval 5
+    timeout 16
+}
+
+# Create external monitor
+tmsh create ltm monitor external my_external_monitor {
+    defaults-from external
+    interval 30
+    timeout 91
+    run /config/monitors/my_custom_check.sh
+}
+```
+
+## Monitor Assignment
+
+### Pool Level
+Monitor applies to all pool members.
+```bash
+tmsh modify ltm pool my_pool monitor my_http_monitor
+```
+
+### Node Level
+Monitor applies to node across all pools.
+```bash
+tmsh modify ltm node 10.0.0.1 monitor my_tcp_monitor
+```
+
+### Member Level
+Specific monitor for individual pool member.
+```bash
+tmsh modify ltm pool my_pool members modify { 10.0.0.1:80 { monitor my_http_monitor } }
+```
+
+### Multiple Monitors
+```bash
+# All monitors must pass (AND)
+tmsh modify ltm pool my_pool monitor "my_tcp_monitor and my_http_monitor"
+
+# Minimum number must pass (M of N)
+tmsh modify ltm pool my_pool monitor "min 1 of { my_http_monitor my_https_monitor }"
+```
+
+## Advanced Monitoring
+
+### Alias Addressing
+Monitor different IP/port than pool member.
+```bash
+tmsh create ltm monitor http alias_monitor {
+    defaults-from http
+    destination *:8080
+}
+```
+
+### Transparent Mode
+Route monitor traffic through normal network path.
+```bash
+tmsh modify ltm monitor http my_monitor transparent enabled
+```
+
+### Adaptive Response Time
+Adjusts member weight based on response time.
+```bash
+tmsh create ltm monitor http adaptive_monitor {
+    adaptive enabled
+    adaptive-limit 1000
+    adaptive-divergence-type relative
+    adaptive-divergence-value 25
+}
+```
+
+### Manual Resume
+Require manual intervention to re-enable failed members.
+```bash
+tmsh modify ltm monitor http my_monitor manual-resume enabled
+```
+
+## Health Check Endpoints
+
+### Designing Health Endpoints
+
+Good health endpoint should:
+1. Check critical dependencies (database, cache)
+2. Return quickly (< 1 second)
+3. Use simple response format
+4. Include meaningful status information
+5. Be lightweight (minimal processing)
+
+Example response formats:
+```json
+// Simple
+{"status": "healthy"}
+
+// Detailed
+{
+    "status": "healthy",
+    "database": "connected",
+    "cache": "connected",
+    "uptime": 86400
+}
+```
+
+### Graceful Degradation
+Use receive disable string for maintenance:
+```bash
+tmsh create ltm monitor http maintenance_monitor {
+    defaults-from http
+    send "GET /health HTTP/1.1\r\nHost: app.example.com\r\n\r\n"
+    recv "HEALTHY"
+    recv-disable "MAINTENANCE"
+}
+```
+
+## Troubleshooting
+
+### Monitor Status Values
+- Available (green) - Monitor passing
+- Offline (red) - Monitor failing
+- Unknown (blue) - No monitor assigned
+- Checking (yellow) - Monitor in progress
+
+### Debug Commands
+```bash
+# View monitor status
+tmsh show ltm pool my_pool members field-fmt
+
+# View monitor statistics
+tmsh show ltm monitor http my_monitor
+
+# Test monitor manually
+curl -v -H "Host: app.example.com" http://10.0.0.1:80/health
+
+# Check monitor daemon log
+tail -f /var/log/monitors/health_monitor.log
+```
+
+### Common Issues
+
+1. **Timeout too long**
+   - Symptom: Slow failover
+   - Fix: Reduce timeout, increase interval
+
+2. **Send string incorrect**
+   - Symptom: Monitor always fails
+   - Fix: Verify HTTP format, include Host header
+
+3. **Receive string mismatch**
+   - Symptom: Monitor fails despite healthy server
+   - Fix: Check actual response content
+
+4. **SSL profile missing**
+   - Symptom: HTTPS monitor fails
+   - Fix: Assign appropriate server-ssl profile
+
+5. **Network routing issue**
+   - Symptom: Monitor fails, direct test works
+   - Fix: Check self IP routing, try transparent mode
+
+## Best Practices
+
+1. **Match monitor to application**
+   - Use HTTP/HTTPS for web apps
+   - Use database-specific monitors for databases
+   - Use external monitors for custom checks
+
+2. **Set appropriate timeouts**
+   - Timeout < (interval × (retry + 1))
+   - Account for network latency
+
+3. **Use meaningful health endpoints**
+   - Don't just check if port is open
+   - Verify application functionality
+
+4. **Test monitor strings**
+   - Manually verify send/receive strings
+   - Account for response variations
+
+5. **Consider dependencies**
+   - Check upstream dependencies
+   - Avoid circular monitoring
+
+6. **Monitor performance impact**
+   - Health checks consume server resources
+   - Don't over-monitor with short intervals
+
+7. **Document monitor configurations**
+   - Record expected behavior
+   - Note any special requirements
+
+8. **Implement graceful degradation**
+   - Use receive disable for maintenance
+   - Enable manual resume for critical systems
+
+9. **Regular testing**
+   - Periodically verify monitor behavior
+   - Test failover scenarios
+
+10. **Centralize health endpoints**
+    - Standardize health check URLs
+    - Consistent response formats

@@ -1,0 +1,230 @@
+# F5 BIG-IP Load Balancing Guide
+
+## Introduction
+
+Load balancing distributes incoming traffic across multiple servers to optimize resource utilization, maximize throughput, minimize response time, and ensure high availability. F5 BIG-IP provides sophisticated load balancing capabilities through its Local Traffic Manager (LTM) module.
+
+## Load Balancing Methods
+
+BIG-IP supports numerous load balancing algorithms to match different application requirements.
+
+### Static Methods
+
+#### Round Robin
+Distributes requests sequentially across pool members. Each new request goes to the next server in line.
+- Best for: Homogeneous server environments with similar capacity
+- Pros: Simple, predictable distribution
+- Cons: Doesn't consider server load or capacity
+
+#### Ratio (Member)
+Distributes requests proportionally based on assigned weight values. Higher ratios receive more traffic.
+- Best for: Servers with different capacities
+- Example: Server A (ratio 3) receives 3x more requests than Server B (ratio 1)
+
+#### Ratio (Node)
+Similar to Ratio (Member) but weights are assigned at the node level, applying to all pool memberships.
+
+### Dynamic Methods
+
+#### Least Connections (Member)
+Sends requests to the pool member with the fewest active connections.
+- Best for: Applications with varying request processing times
+- Considers: Current connection count per member
+
+#### Least Connections (Node)
+Considers connection count at the node level across all pools.
+
+#### Fastest (Node)
+Routes to the server with the fastest response time based on TTFB (Time to First Byte).
+- Best for: Applications where server performance varies
+- Requires: Health monitor that measures response time
+
+#### Fastest (Application)
+Uses application-layer response times for routing decisions.
+
+#### Observed (Member)
+Combines connection count with response time for dynamic load distribution.
+- Ranks servers based on current performance
+- Adapts to changing conditions
+
+#### Predictive (Member)
+Analyzes performance trends to predict which server will perform best.
+- Uses historical data for ranking
+- Best for: Environments with fluctuating loads
+
+#### Weighted Least Connections
+Combines static weights with dynamic connection counting.
+- Formula: (current_connections + 1) / weight
+- Routes to member with lowest calculated value
+
+### Other Methods
+
+#### Least Sessions
+Optimizes for session-based workloads by tracking active sessions.
+
+#### Dynamic Ratio
+Adjusts ratios dynamically based on probe data from servers.
+
+## Priority Groups
+
+Priority groups enable tiered failover between server groups.
+
+Configuration:
+1. Assign priority values to pool members (higher = primary)
+2. Set the pool's "Priority Group Activation" threshold
+3. Lower priority members only receive traffic when higher priority group capacity falls below threshold
+
+Example:
+- Priority 2: Primary servers (data center A)
+- Priority 1: Backup servers (data center B)
+- Activation: Less than 1 member available
+
+## Slow Ramp Time
+
+Gradually increases traffic to newly available pool members.
+
+Benefits:
+- Allows server caches to warm up
+- Prevents overwhelming just-recovered servers
+- Smoother distribution of load
+
+Configuration:
+- Set ramp time in seconds
+- New members start with reduced traffic
+- Traffic increases linearly until ramp time expires
+
+## Connection Limits
+
+Protect servers from overload by limiting concurrent connections.
+
+Settings:
+- Pool member connection limit
+- Node connection limit
+- Ratio limit (connections per ratio unit)
+
+When limit is reached:
+- New connections queue or go to other members
+- Optional: Configure action on pool down
+
+## One Connect (Connection Optimization)
+
+Reduces server connection overhead through connection reuse.
+
+Benefits:
+- Fewer TCP connections to servers
+- Reduced server CPU and memory usage
+- Improved response times
+
+How it works:
+1. BIG-IP maintains pool of connections to servers
+2. Client requests use existing idle connections
+3. Connections returned to pool after response
+
+Configuration:
+- Assign OneConnect profile to virtual server
+- Set idle timeout and maximum connections
+- Configure source mask for connection reuse scope
+
+## Health Monitoring Integration
+
+Load balancing relies on health monitors to determine member availability.
+
+Considerations:
+- Monitor interval affects responsiveness
+- Use application-appropriate monitors
+- Configure proper timeout values
+- Consider monitor dependencies
+
+Monitor impact on load balancing:
+- Failed members excluded from rotation
+- Recovered members added back (consider slow ramp)
+- Monitor state affects availability calculations
+
+## Persistence with Load Balancing
+
+Persistence (session affinity) must balance with load distribution.
+
+Interaction:
+- Persistence overrides load balancing for existing sessions
+- New sessions follow load balancing rules
+- Session timeout affects rebalancing
+
+Persistence methods:
+- Source Address Affinity - Based on client IP
+- Cookie Persistence - HTTP cookie-based
+- SSL Session ID - TLS session-based
+- Universal - Custom key using iRules
+
+## GSLB (Global Server Load Balancing)
+
+DNS-based load balancing across data centers using BIG-IP GTM/DNS.
+
+Features:
+- Geolocation routing
+- Performance-based routing
+- Disaster recovery
+- Active-active data centers
+
+GSLB methods:
+- Round Robin
+- Ratio
+- Topology (location-based)
+- Static Persist
+- Global Availability
+
+## Performance Considerations
+
+1. **Method Selection**
+   - Match algorithm to application behavior
+   - Consider session length and request patterns
+   - Start simple, optimize as needed
+
+2. **Monitoring**
+   - Track distribution across members
+   - Monitor server utilization
+   - Analyze response times
+
+3. **Capacity Planning**
+   - Size pools for peak load plus headroom
+   - Plan for member failures
+   - Consider burst traffic patterns
+
+4. **Optimization**
+   - Use appropriate health check intervals
+   - Enable connection optimization where beneficial
+   - Configure proper timeout values
+
+## TMSH Commands
+
+```bash
+# Create pool with load balancing method
+tmsh create ltm pool my_pool load-balancing-mode least-connections-member
+
+# Add members with ratios
+tmsh modify ltm pool my_pool members add { 10.0.0.1:80 { ratio 3 } 10.0.0.2:80 { ratio 1 } }
+
+# Configure priority group
+tmsh modify ltm pool my_pool members modify { 10.0.0.1:80 { priority-group 2 } }
+
+# Set slow ramp time
+tmsh modify ltm pool my_pool slow-ramp-time 30
+
+# View pool statistics
+tmsh show ltm pool my_pool members
+
+# View load balancing decision statistics
+tmsh show ltm pool my_pool field-fmt
+```
+
+## Best Practices
+
+1. Choose load balancing methods based on actual application behavior
+2. Test load distribution under realistic conditions
+3. Monitor and adjust as application patterns change
+4. Use priority groups for DR scenarios
+5. Enable slow ramp for applications that benefit from warmup
+6. Set appropriate connection limits to protect servers
+7. Document load balancing configuration decisions
+8. Regularly review pool statistics and adjust as needed
+9. Consider seasonal or time-based traffic patterns
+10. Test failover scenarios periodically

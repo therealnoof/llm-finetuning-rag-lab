@@ -1,0 +1,137 @@
+# F5 BIG-IP Fundamentals
+
+## Overview
+
+F5 BIG-IP is a family of products covering software and hardware designed around application availability, access control, and security solutions. BIG-IP Local Traffic Manager (LTM) is the core module that provides intelligent traffic management, load balancing, and application delivery services.
+
+## Core Components
+
+### Virtual Servers
+
+A Virtual Server is the main traffic management object in BIG-IP. It represents an IP address and port combination that receives traffic and directs it to a pool of back-end servers.
+
+Key properties of virtual servers:
+- Destination IP address and port (e.g., 10.10.10.100:443)
+- Associated pool for load balancing
+- Profiles for protocol optimization
+- iRules for custom traffic handling
+- Persistence settings for session affinity
+
+Types of virtual servers:
+1. Standard - Full proxy mode, complete traffic inspection
+2. Forwarding (Layer 2) - Passes traffic without modification
+3. Forwarding (IP) - Routes based on destination IP
+4. Performance (Layer 4) - Fast path for high throughput
+5. Performance (HTTP) - Optimized for HTTP traffic
+
+### Pools
+
+A Pool is a logical grouping of servers (pool members) that receive traffic from a virtual server. Pools contain:
+- Pool members (nodes with specific ports)
+- Load balancing method
+- Health monitors
+- Priority groups (optional)
+
+Pool member states:
+- Available (green) - Passing health checks
+- Offline (red) - Failing health checks
+- Unknown (blue) - No monitor assigned
+- Disabled (black) - Administratively disabled
+
+### Nodes
+
+A Node represents a physical or virtual server's IP address. Nodes can be members of multiple pools with different port configurations.
+
+Node configuration includes:
+- IP address
+- Health monitor
+- Connection limits
+- Rate limits
+
+### Profiles
+
+Profiles are configuration objects that define how BIG-IP processes specific types of traffic. They enable protocol optimization and security features.
+
+Common profile types:
+- TCP - Optimizes TCP connections
+- HTTP - HTTP protocol processing, compression, caching
+- SSL/TLS (Client and Server) - Encryption handling
+- Persistence - Session affinity methods
+- OneConnect - Connection pooling
+- HTTP Compression - Response compression
+- Web Acceleration - Caching and optimization
+
+Profile inheritance allows creating custom profiles based on parent profiles while only modifying specific settings.
+
+## Traffic Flow
+
+Basic traffic flow through BIG-IP:
+1. Client sends request to virtual server IP
+2. Virtual server receives and processes traffic
+3. Load balancing algorithm selects pool member
+4. Request forwarded to selected server
+5. Server response returns through BIG-IP
+6. Response delivered to client
+
+BIG-IP operates as a full proxy by default, meaning it maintains separate connections to clients and servers, allowing complete inspection and modification of traffic.
+
+## SNAT (Secure Network Address Translation)
+
+SNAT translates the source IP address of connections to servers. This is important when:
+- Servers need to route return traffic back through BIG-IP
+- Hiding client IP addresses is required
+- Servers are on different subnets
+
+SNAT options:
+- None - No source address translation
+- Automap - Use self IP of egress VLAN
+- SNAT Pool - Use addresses from a defined pool
+
+## Self IPs
+
+Self IPs are IP addresses assigned to BIG-IP VLANs. They enable:
+- Routing between VLANs
+- Health monitoring from BIG-IP
+- Management access
+- SNAT Automap addressing
+
+Self IP types:
+- Non-floating - Unique to each BIG-IP unit
+- Floating - Shared between HA pair members
+
+## High Availability
+
+BIG-IP supports active-standby and active-active high availability configurations through Device Service Clustering (DSC).
+
+Key HA components:
+- Config Sync - Synchronizes configuration between units
+- Failover - Automatic or manual failover between units
+- Mirroring - Connection table replication
+
+Failover triggers:
+- Hardware failure
+- Network failure
+- Manual failover
+- Gateway pool failures
+
+## TMOS (Traffic Management Operating System)
+
+TMOS is the custom operating system powering BIG-IP. It includes:
+- TMM (Traffic Management Microkernel) - Core traffic processing
+- Linux host - Configuration management
+- GUI (Configuration utility)
+- CLI (TMSH - Traffic Management Shell)
+- API (iControl REST)
+
+## Best Practices
+
+1. Always use health monitors appropriate for the application
+2. Implement proper persistence when required by the application
+3. Use descriptive naming conventions for all objects
+4. Document custom configurations and iRules
+5. Test changes in a non-production environment first
+6. Maintain regular configuration backups
+7. Keep BIG-IP software updated for security patches
+8. Monitor system performance and capacity
+9. Use appropriate SSL/TLS profiles for security
+10. Implement rate limiting to protect against abuse

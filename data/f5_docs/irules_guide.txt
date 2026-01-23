@@ -1,0 +1,277 @@
+# F5 iRules Programming Guide
+
+## Introduction to iRules
+
+iRules are F5's proprietary scripting language for customizing traffic management on BIG-IP. Based on Tcl (Tool Command Language), iRules allow administrators to intercept, inspect, and manipulate network traffic in real-time.
+
+iRules execute at wire speed within the Traffic Management Microkernel (TMM), providing high-performance traffic manipulation capabilities.
+
+## iRule Structure
+
+Every iRule consists of one or more event handlers. Events trigger when specific actions occur during traffic processing.
+
+Basic syntax:
+```tcl
+when EVENT_NAME {
+    # Commands to execute
+}
+```
+
+## Common Events
+
+### Connection Events
+- CLIENT_ACCEPTED - Client connection established
+- SERVER_CONNECTED - Backend connection established
+- CLIENT_CLOSED - Client connection closed
+- SERVER_CLOSED - Backend connection closed
+
+### HTTP Events
+- HTTP_REQUEST - HTTP request received from client
+- HTTP_RESPONSE - HTTP response received from server
+- HTTP_REQUEST_DATA - Request payload available
+- HTTP_RESPONSE_DATA - Response payload available
+
+### SSL Events
+- CLIENTSSL_HANDSHAKE - Client SSL handshake complete
+- SERVERSSL_HANDSHAKE - Server SSL handshake complete
+- CLIENTSSL_CLIENTCERT - Client certificate received
+
+### Other Events
+- LB_SELECTED - Load balancing decision made
+- LB_FAILED - Load balancing failed
+- RULE_INIT - iRule loaded (initialization)
+
+## Essential Commands
+
+### HTTP Commands
+```tcl
+# Get HTTP host header
+set host [HTTP::host]
+
+# Get request URI
+set uri [HTTP::uri]
+
+# Get HTTP method
+set method [HTTP::method]
+
+# Get specific header
+set user_agent [HTTP::header "User-Agent"]
+
+# Modify request URI
+HTTP::uri "/new/path"
+
+# Add/modify header
+HTTP::header insert "X-Custom-Header" "value"
+HTTP::header replace "Host" "new.host.com"
+
+# Remove header
+HTTP::header remove "X-Unwanted-Header"
+
+# Get response status
+set status [HTTP::status]
+```
+
+### Pool Selection
+```tcl
+# Select specific pool
+pool my_pool
+
+# Select pool member
+pool my_pool member 10.0.0.1 80
+
+# Get selected pool name
+set current_pool [LB::server pool]
+```
+
+### Redirects and Responses
+```tcl
+# HTTP redirect
+HTTP::redirect "https://www.example.com[HTTP::uri]"
+
+# Custom response
+HTTP::respond 200 content "OK" "Content-Type" "text/plain"
+
+# Block request
+reject
+drop
+```
+
+### IP and Connection
+```tcl
+# Get client IP
+set client_ip [IP::client_addr]
+
+# Get server IP
+set server_ip [IP::server_addr]
+
+# Get ports
+set client_port [TCP::client_port]
+set server_port [TCP::server_port]
+
+# Get local (virtual server) IP
+set vip [IP::local_addr]
+```
+
+### Logging
+```tcl
+# Log to /var/log/ltm
+log local0. "Message text"
+
+# Log levels: emerg, alert, crit, err, warning, notice, info, debug
+log local0.info "Informational message"
+```
+
+## Common Use Cases
+
+### 1. HTTP to HTTPS Redirect
+```tcl
+when HTTP_REQUEST {
+    if { [HTTP::host] ne "" } {
+        HTTP::redirect "https://[HTTP::host][HTTP::uri]"
+    }
+}
+```
+
+### 2. URI-Based Pool Selection
+```tcl
+when HTTP_REQUEST {
+    switch -glob [HTTP::uri] {
+        "/api/*" { pool api_pool }
+        "/images/*" { pool static_pool }
+        "/admin/*" { pool admin_pool }
+        default { pool default_pool }
+    }
+}
+```
+
+### 3. Insert X-Forwarded-For Header
+```tcl
+when HTTP_REQUEST {
+    HTTP::header insert "X-Forwarded-For" [IP::client_addr]
+}
+```
+
+### 4. Rate Limiting
+```tcl
+when HTTP_REQUEST {
+    set client_ip [IP::client_addr]
+    set rate_key "rate_$client_ip"
+
+    # Increment counter, set 60 second timeout
+    set rate [table incr -subtable rate_limit $rate_key]
+    table timeout -subtable rate_limit $rate_key 60
+
+    if { $rate > 100 } {
+        HTTP::respond 429 content "Rate limit exceeded"
+    }
+}
+```
+
+### 5. Cookie-Based Persistence Insertion
+```tcl
+when HTTP_RESPONSE {
+    # Insert persistence cookie
+    HTTP::cookie insert name "SERVERID" value [IP::server_addr]
+}
+
+when HTTP_REQUEST {
+    if { [HTTP::cookie exists "SERVERID"] } {
+        set server [HTTP::cookie "SERVERID"]
+        pool my_pool member $server 80
+    }
+}
+```
+
+### 6. Maintenance Page
+```tcl
+when HTTP_REQUEST {
+    if { [active_members my_pool] == 0 } {
+        HTTP::respond 503 content {
+            <html><body><h1>Service Temporarily Unavailable</h1></body></html>
+        } "Content-Type" "text/html"
+    }
+}
+```
+
+### 7. Content Rewriting
+```tcl
+when HTTP_RESPONSE {
+    # Enable response collection
+    if { [HTTP::header "Content-Type"] contains "text/html" } {
+        HTTP::collect [HTTP::header "Content-Length"]
+    }
+}
+
+when HTTP_RESPONSE_DATA {
+    # Replace content
+    set payload [HTTP::payload]
+    set payload [string map {"old_domain.com" "new_domain.com"} $payload]
+    HTTP::payload replace 0 [HTTP::payload length] $payload
+}
+```
+
+## Data Groups
+
+Data groups store lists of values for efficient lookups in iRules.
+
+Types:
+- String - Key-value pairs
+- Address - IP addresses/subnets
+- Integer - Numeric ranges
+
+```tcl
+# Check membership in address data group
+when CLIENT_ACCEPTED {
+    if { [class match [IP::client_addr] equals "blocked_ips"] } {
+        reject
+    }
+}
+
+# Lookup value in string data group
+when HTTP_REQUEST {
+    set redirect_target [class lookup [HTTP::host] "host_redirects"]
+    if { $redirect_target ne "" } {
+        HTTP::redirect $redirect_target
+    }
+}
+```
+
+## Tables (Session Tables)
+
+Tables provide temporary storage across requests.
+
+```tcl
+# Set value with timeout
+table set -subtable "sessions" $key $value 3600
+
+# Get value
+set value [table lookup -subtable "sessions" $key]
+
+# Delete entry
+table delete -subtable "sessions" $key
+```
+
+## Performance Best Practices
+
+1. Minimize iRule complexity - Simple rules perform better
+2. Use switch statements instead of multiple if/elseif chains
+3. Avoid regular expressions when string commands suffice
+4. Use data groups for large lookup tables
+5. Cache computed values in variables
+6. Limit logging in production environments
+7. Use appropriate events (don't collect data you don't need)
+8. Test performance impact before deployment
+9. Consider iRule timing in Statistics profile
+10. Use when clauses to limit event processing
+
+## Debugging
+
+Enable iRule logging during development:
+```tcl
+when HTTP_REQUEST {
+    log local0.debug "Client: [IP::client_addr], URI: [HTTP::uri]"
+}
+```
+
+Use the iRule editor in the GUI for syntax checking.
+Check /var/log/ltm for logged messages.

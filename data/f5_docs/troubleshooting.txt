@@ -1,0 +1,403 @@
+# F5 BIG-IP Troubleshooting Guide
+
+## Systematic Troubleshooting Approach
+
+### Step 1: Define the Problem
+- What is the expected behavior?
+- What is the actual behavior?
+- When did the problem start?
+- What changed recently?
+
+### Step 2: Gather Information
+- Check logs
+- Review configuration
+- Verify network connectivity
+- Test from different locations
+
+### Step 3: Isolate the Issue
+- Determine if issue is BIG-IP, server, or network related
+- Test each component individually
+- Use bypass methods to confirm
+
+### Step 4: Implement Solution
+- Make one change at a time
+- Document all changes
+- Verify the fix
+
+## Essential Troubleshooting Commands
+
+### System Status
+```bash
+# Overall system health
+tmsh show sys hardware
+tmsh show sys version
+tmsh show sys license
+
+# CPU and memory
+tmsh show sys performance all-stats
+tmsh show sys memory
+
+# Disk space
+df -h
+
+# High availability status
+tmsh show cm device-group
+tmsh show cm sync-status
+```
+
+### Traffic Management Status
+```bash
+# Virtual server status
+tmsh show ltm virtual
+tmsh show ltm virtual my_vs detail
+
+# Pool and member status
+tmsh show ltm pool
+tmsh show ltm pool my_pool members
+
+# Node status
+tmsh show ltm node
+
+# Connection table
+tmsh show sys connection
+
+# Current connections
+tmsh show ltm virtual my_vs stats
+```
+
+### Log Files
+
+Important log locations:
+- /var/log/ltm - LTM events, iRules logging
+- /var/log/apm - APM events
+- /var/log/gtm - GTM/DNS events
+- /var/log/asm - ASM (WAF) events
+- /var/log/audit - Configuration changes
+- /var/log/daemon.log - System daemon logs
+
+```bash
+# View LTM log
+tail -f /var/log/ltm
+
+# Search for specific errors
+grep -i error /var/log/ltm
+
+# View recent audit entries
+tail -100 /var/log/audit
+```
+
+## Common Issues and Solutions
+
+### Virtual Server Issues
+
+#### Virtual Server Showing "Unknown" Status
+Causes:
+- No monitor assigned
+- All pool members down
+- Pool not assigned
+
+Solutions:
+```bash
+# Check pool assignment
+tmsh list ltm virtual my_vs pool
+
+# Check pool members
+tmsh show ltm pool my_pool members
+
+# Assign monitor to pool
+tmsh modify ltm pool my_pool monitor http
+```
+
+#### Traffic Not Reaching Virtual Server
+Causes:
+- Routing issue
+- Firewall blocking
+- Virtual server disabled
+- Wrong VLAN assignment
+
+Solutions:
+```bash
+# Verify virtual server is enabled
+tmsh show ltm virtual my_vs enabled
+
+# Check VLAN assignment
+tmsh list ltm virtual my_vs vlans
+
+# Test connectivity
+ping [virtual_server_ip]
+
+# Verify ARP
+tmsh show net arp
+```
+
+### Pool and Member Issues
+
+#### Pool Members Marked Down
+Causes:
+- Health monitor failure
+- Server not responding
+- Network connectivity issue
+- Wrong monitor configuration
+
+Solutions:
+```bash
+# Check monitor configuration
+tmsh list ltm monitor http my_monitor
+
+# Test manually
+curl -v http://[member_ip]:[port]/health
+
+# Check network path
+tcpdump -ni [vlan] host [member_ip]
+
+# Verify member IP and port
+tmsh list ltm pool my_pool members
+```
+
+#### Uneven Load Distribution
+Causes:
+- Persistence settings
+- Slow ramp time
+- Priority groups
+- Member weights
+
+Solutions:
+```bash
+# Check persistence
+tmsh list ltm virtual my_vs persist
+
+# Review pool settings
+tmsh list ltm pool my_pool load-balancing-mode slow-ramp-time
+
+# Check member statistics
+tmsh show ltm pool my_pool members field-fmt
+```
+
+### SSL/TLS Issues
+
+#### SSL Handshake Failures
+Causes:
+- Certificate issues
+- Cipher mismatch
+- Protocol version mismatch
+- Certificate chain incomplete
+
+Solutions:
+```bash
+# Test SSL connection
+openssl s_client -connect [ip]:443
+
+# Check certificate
+tmsh list sys crypto cert [cert_name]
+
+# Verify cipher configuration
+tmsh list ltm profile client-ssl my_ssl ciphers
+
+# Check for SSL errors
+grep -i ssl /var/log/ltm
+```
+
+#### Certificate Chain Issues
+```bash
+# View certificate chain
+openssl s_client -connect [ip]:443 -showcerts
+
+# Verify chain order
+openssl verify -CAfile chain.crt server.crt
+```
+
+### Performance Issues
+
+#### High CPU Usage
+Causes:
+- Traffic volume
+- iRule complexity
+- SSL processing
+- Logging overhead
+
+Solutions:
+```bash
+# Check CPU by process
+top
+
+# Check TMM CPU specifically
+tmsh show sys tmm-info
+
+# Review iRule performance
+tmsh show ltm rule [rule_name] stats
+
+# Check SSL performance
+tmsh show sys performance ssl
+```
+
+#### Memory Issues
+```bash
+# Check memory usage
+tmsh show sys memory
+
+# Check TMM memory
+tmsh show sys tmm-info
+
+# Check connection table size
+tmsh show sys connection count
+
+# Clear old connections if needed
+tmsh delete sys connection all
+```
+
+### Connection Issues
+
+#### Connections Timing Out
+Causes:
+- SNAT not configured
+- Routing asymmetry
+- Timeout values too low
+- Server not responding
+
+Solutions:
+```bash
+# Check SNAT configuration
+tmsh list ltm virtual my_vs source-address-translation
+
+# Verify routing
+traceroute [server_ip]
+
+# Check timeout settings
+tmsh list ltm profile tcp my_tcp idle-timeout
+
+# Monitor connections
+tcpdump -ni [vlan] host [client_ip]
+```
+
+#### Connections Refused
+```bash
+# Check virtual server status
+tmsh show ltm virtual my_vs availability
+
+# Check connection limits
+tmsh list ltm pool my_pool members { connection-limit }
+
+# Verify port availability
+netstat -an | grep [port]
+```
+
+### iRule Troubleshooting
+
+#### Enable iRule Logging
+```tcl
+when HTTP_REQUEST {
+    log local0. "Client: [IP::client_addr] URI: [HTTP::uri]"
+}
+```
+
+#### Check iRule Timing
+```bash
+# Enable timing statistics
+tmsh modify ltm profile http my_http insert-xforwarded-for enabled
+
+# View iRule statistics
+tmsh show ltm rule my_rule stats
+```
+
+#### Common iRule Errors
+- TCL syntax errors - Check for missing brackets, quotes
+- Event misuse - Verify correct event for commands
+- Variable scope - Use `set` appropriately
+
+### High Availability Issues
+
+#### Sync Failures
+```bash
+# Check sync status
+tmsh show cm sync-status
+
+# View sync errors
+cat /var/log/ltm | grep -i sync
+
+# Force sync
+tmsh run cm config-sync to-group [group_name]
+```
+
+#### Failover Problems
+```bash
+# Check failover status
+tmsh show cm device [device_name]
+
+# View failover objects
+tmsh list cm traffic-group
+
+# Check gateway failsafe
+tmsh list ltm gateway-icmp
+```
+
+## Packet Capture
+
+### Basic Capture
+```bash
+# Capture traffic on specific VLAN
+tcpdump -ni [vlan_name] host [ip_address] -w /var/tmp/capture.pcap
+
+# Capture specific port
+tcpdump -ni [vlan_name] port 443
+
+# Capture with verbose output
+tcpdump -ni [vlan_name] -Xvvs0 host [ip_address]
+```
+
+### Internal Capture (includes modified traffic)
+```bash
+# Capture on internal interface
+tcpdump -ni 0.0:nnnp host [ip_address]
+```
+
+### Analysis
+```bash
+# Read capture file
+tcpdump -r /var/tmp/capture.pcap
+
+# Download for Wireshark analysis
+scp admin@[bigip_ip]:/var/tmp/capture.pcap ./
+```
+
+## Qkview and Support
+
+### Generate Qkview
+```bash
+# Generate qkview file
+qkview
+
+# Output location
+ls -la /var/tmp/qkview*
+```
+
+### iHealth Analysis
+1. Upload qkview to iHealth (https://ihealth.f5.com)
+2. Review diagnostics
+3. Address identified issues
+
+## Best Practices
+
+1. **Regular Health Checks**
+   - Monitor system performance
+   - Review logs daily
+   - Check for software updates
+
+2. **Documentation**
+   - Keep configuration records
+   - Document changes
+   - Maintain runbooks
+
+3. **Backup Strategy**
+   - Regular UCS backups
+   - Test restoration procedures
+   - Store backups securely
+
+4. **Change Management**
+   - Test in non-production first
+   - Schedule maintenance windows
+   - Have rollback plans
+
+5. **Monitoring**
+   - Implement SNMP monitoring
+   - Set up alerting thresholds
+   - Track key performance metrics
