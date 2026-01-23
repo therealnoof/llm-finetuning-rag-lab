@@ -56,8 +56,8 @@ By the end of this lab, students will be able to:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/LLM-FineTuning-RAG-Lab.git
-cd LLM-FineTuning-RAG-Lab
+git clone https://github.com/therealnoof/llm-finetuning-rag-lab.git
+cd llm-finetuning-rag-lab
 
 # Create virtual environment
 python -m venv venv
