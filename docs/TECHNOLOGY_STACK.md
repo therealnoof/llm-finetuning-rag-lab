@@ -48,6 +48,186 @@ The tech stack was selected to run entirely on Google Colab's free tier (T4 GPU 
 
 ---
 
+## Prompting and Chat Templates
+
+### How to Ask the Model Questions
+
+LLMs don't just take raw text - they expect a specific format called a **chat template**. This tells the model who is speaking (system, user, assistant) and when to respond.
+
+#### TinyLlama Chat Format
+
+TinyLlama uses this specific format:
+
+```
+<|system|>
+You are a helpful assistant.</s>
+<|user|>
+What is SSL offloading?</s>
+<|assistant|>
+```
+
+| Token | Purpose |
+|-------|---------|
+| `<|system|>` | Marks the start of system instructions (sets behavior/persona) |
+| `<|user|>` | Marks the start of the user's message (your question) |
+| `<|assistant|>` | Marks where the model should start generating its response |
+| `</s>` | End-of-sequence token (marks end of each turn) |
+
+#### Basic Prompt Structure
+
+```python
+# Simple question to the model
+prompt = """<|system|>
+You are a helpful assistant.</s>
+<|user|>
+What is a virtual server in F5 BIG-IP?</s>
+<|assistant|>
+"""
+
+# The model generates text starting after <|assistant|>
+response = pipeline(prompt)[0]["generated_text"]
+```
+
+#### Why the Format Matters
+
+Without proper formatting, the model gets confused:
+
+```python
+# ❌ BAD - No chat template
+prompt = "What is SSL offloading?"
+# Model might continue the sentence randomly: "What is SSL offloading? It's a question..."
+
+# ✅ GOOD - Proper chat template
+prompt = """<|system|>
+You are a helpful assistant.</s>
+<|user|>
+What is SSL offloading?</s>
+<|assistant|>
+"""
+# Model understands it should ANSWER the question
+```
+
+#### Adding Context (for RAG)
+
+When using RAG, inject the retrieved context into the system or user message:
+
+```python
+# RAG prompt with context
+prompt = f"""<|system|>
+You are an F5 BIG-IP technical expert. Use the following context to answer the question accurately.
+
+Context:
+{retrieved_context}</s>
+<|user|>
+{user_question}</s>
+<|assistant|>
+"""
+```
+
+#### Different Prompt Patterns
+
+**1. Simple Q&A:**
+```python
+prompt = """<|system|>
+You are a helpful technical assistant.</s>
+<|user|>
+How do I check pool member status?</s>
+<|assistant|>
+"""
+```
+
+**2. With Persona/Role:**
+```python
+prompt = """<|system|>
+You are a senior F5 BIG-IP engineer with 10 years of experience.
+Provide detailed, actionable answers with TMSH commands when relevant.</s>
+<|user|>
+A pool member is showing offline. How do I troubleshoot?</s>
+<|assistant|>
+"""
+```
+
+**3. With Examples (Few-Shot):**
+```python
+prompt = """<|system|>
+You are an iRule expert. Write iRules based on the user's requirements.</s>
+<|user|>
+Write an iRule to log all HTTP requests.</s>
+<|assistant|>
+when HTTP_REQUEST {
+    log local0. "Request: [HTTP::method] [HTTP::uri]"
+}</s>
+<|user|>
+Write an iRule to redirect HTTP to HTTPS.</s>
+<|assistant|>
+"""
+```
+
+**4. Multi-Turn Conversation:**
+```python
+prompt = """<|system|>
+You are a helpful assistant.</s>
+<|user|>
+What is a virtual server?</s>
+<|assistant|>
+A virtual server is a traffic management object that receives client connections.</s>
+<|user|>
+How do I create one?</s>
+<|assistant|>
+"""
+```
+
+#### Using the Tokenizer's Chat Template
+
+Instead of manually formatting, you can use the tokenizer's built-in template:
+
+```python
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "What is SSL offloading?"}
+]
+
+# Tokenizer formats it correctly for TinyLlama
+prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+```
+
+This automatically produces the correct `<|system|>`, `<|user|>`, `<|assistant|>` format.
+
+#### Generation Parameters
+
+Control how the model generates responses:
+
+```python
+pipeline = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    max_new_tokens=256,    # Maximum tokens to generate
+    temperature=0.7,       # Randomness (0=deterministic, 1=creative)
+    top_p=0.9,            # Nucleus sampling (consider top 90% probability tokens)
+    do_sample=True,       # Enable sampling (vs greedy decoding)
+    pad_token_id=tokenizer.eos_token_id  # Prevent padding warnings
+)
+```
+
+| Parameter | Effect |
+|-----------|--------|
+| `max_new_tokens` | Limits response length. 256 ≈ 1-2 paragraphs. |
+| `temperature` | Lower = focused/deterministic. Higher = creative/random. |
+| `top_p` | Filters unlikely tokens. 0.9 means ignore bottom 10% probability. |
+| `do_sample` | If False, always picks highest probability token (greedy). |
+
+#### Common Prompting Mistakes
+
+| Mistake | Problem | Fix |
+|---------|---------|-----|
+| Missing `</s>` after turns | Model doesn't know when turn ends | Add `</s>` after each message |
+| No `<|assistant|>` at end | Model doesn't know to start responding | Always end with `<|assistant|>\n` |
+| Wrong template for model | Different models use different formats | Use `tokenizer.apply_chat_template()` |
+| Prompt too long | Exceeds context limit (2048 tokens) | Summarize context or chunk |
+
+---
+
 ## Quantization & Memory Optimization
 
 ### BitsAndBytes
