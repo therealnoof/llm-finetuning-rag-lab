@@ -101,6 +101,7 @@ temp/
 
 # Results and outputs (regenerated)
 results/
+!results/baseline_results.json
 *.pkl
 *.pickle
 

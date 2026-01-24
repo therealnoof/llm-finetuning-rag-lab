@@ -1,0 +1,26 @@
+{
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "type": "baseline",
+  "responses": [
+    {
+      "question": "What is a virtual server in F5 BIG-IP and what is its purpose?",
+      "response": "A virtual server is a software-based server that runs on a physical server or cloud infrastructure. It allows multiple operating systems to run on a single physical machine, sharing resources like CPU, memory, and storage. Virtual servers are commonly used for web hosting, application deployment, and testing environments. They provide flexibility, scalability, and cost savings compared to dedicated physical servers."
+    },
+    {
+      "question": "How do I configure SSL offloading on F5 BIG-IP?",
+      "response": "SSL offloading is a process where SSL/TLS encryption and decryption is handled by a dedicated device rather than the web server. To configure SSL offloading, you typically need to: 1) Install an SSL certificate on your load balancer or proxy device, 2) Configure the device to terminate SSL connections, 3) Set up the backend servers to receive unencrypted traffic, and 4) Ensure proper security policies are in place. This helps reduce the computational load on your application servers."
+    },
+    {
+      "question": "Write an iRule to redirect HTTP to HTTPS.",
+      "response": "To redirect HTTP to HTTPS, you can use server-side code or configure your web server. Here's a general approach:\n\nFor Apache, add to .htaccess:\nRewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]\n\nFor Nginx, add to server block:\nserver {\n    listen 80;\n    return 301 https://$host$request_uri;\n}\n\nThis ensures all HTTP traffic is redirected to the secure HTTPS version."
+    },
+    {
+      "question": "What is the difference between Least Connections and Round Robin load balancing?",
+      "response": "Round Robin and Least Connections are two common load balancing algorithms:\n\nRound Robin distributes requests sequentially across servers in order. Each server gets a request in turn, regardless of current load. It's simple but doesn't account for server capacity differences.\n\nLeast Connections sends new requests to the server with the fewest active connections. This is more dynamic and helps balance load when requests have varying processing times.\n\nRound Robin works well for similar servers with uniform requests, while Least Connections is better when request processing times vary significantly."
+    },
+    {
+      "question": "How do I troubleshoot a pool member that is marked as offline?",
+      "response": "When a server or pool member is marked as offline, here are troubleshooting steps:\n\n1. Check if the server is running and accessible on the network\n2. Verify the service (web server, application) is running on the correct port\n3. Check firewall rules that might be blocking health check traffic\n4. Review the health check configuration to ensure it's correctly configured\n5. Check server logs for errors or issues\n6. Verify network connectivity between the load balancer and the server\n7. Test the health check endpoint manually using curl or telnet\n\nIf the server responds correctly to manual tests but still shows offline, the health check configuration may need adjustment."
+    }
+  ]
+}
