@@ -174,36 +174,212 @@ LoraConfig(
 - Well-suited for technical documentation retrieval
 
 ### RAG Pipeline Flow
+
+The RAG pipeline has two phases: **indexing** (one-time setup) and **retrieval** (every query).
+
+#### Phase 1: Indexing (One-Time Setup)
+
+Before we can answer questions, we must prepare our knowledge base:
+
 ```
-User Question
-     │
-     ▼
-┌─────────────┐
-│  Embedding  │  ← all-MiniLM-L6-v2
-│   Model     │
-└─────────────┘
-     │
-     ▼
-┌─────────────┐
-│  ChromaDB   │  ← Similarity search (top-k=3)
-│Vector Store │
-└─────────────┘
-     │
-     ▼
-┌─────────────┐
-│  Retrieved  │  ← Relevant document chunks
-│   Context   │
-└─────────────┘
-     │
-     ▼
-┌─────────────┐
-│  TinyLlama  │  ← Generate answer with context
-│     LLM     │
-└─────────────┘
-     │
-     ▼
-   Response
+┌─────────────────────────────────────────────────────────────────┐
+│                     INDEXING PHASE                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   F5 Documentation Files                                         │
+│   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
+│   │ ssl_offload  │ │ irules_guide │ │ load_balance │  ...       │
+│   │    .txt      │ │    .txt      │ │    .txt      │            │
+│   └──────┬───────┘ └──────┬───────┘ └──────┬───────┘            │
+│          │                │                │                     │
+│          └────────────────┼────────────────┘                     │
+│                           ▼                                      │
+│                  ┌─────────────────┐                             │
+│                  │  Text Splitter  │                             │
+│                  │  (500 chars,    │                             │
+│                  │   50 overlap)   │                             │
+│                  └────────┬────────┘                             │
+│                           │                                      │
+│          Why? Documents are too long for LLM context.            │
+│          We split into chunks that fit and overlap               │
+│          to preserve context at boundaries.                      │
+│                           │                                      │
+│                           ▼                                      │
+│          ┌────────────────────────────────┐                      │
+│          │  Chunks (e.g., 45 total)       │                      │
+│          │  "To configure SSL offload..." │                      │
+│          │  "Create a Client SSL prof..." │                      │
+│          │  "iRules use TCL syntax..."    │                      │
+│          └────────────────┬───────────────┘                      │
+│                           │                                      │
+│                           ▼                                      │
+│                  ┌─────────────────┐                             │
+│                  │ Embedding Model │                             │
+│                  │ (all-MiniLM-L6) │                             │
+│                  └────────┬────────┘                             │
+│                           │                                      │
+│          Why? Computers can't understand text directly.          │
+│          Embeddings convert text → numbers (vectors)             │
+│          where similar meanings = similar numbers.               │
+│                           │                                      │
+│                           ▼                                      │
+│          ┌────────────────────────────────┐                      │
+│          │  Vectors (384 dimensions each) │                      │
+│          │  [0.23, -0.45, 0.12, ...]      │                      │
+│          │  [0.67, -0.21, 0.89, ...]      │                      │
+│          │  [-0.15, 0.33, 0.44, ...]      │                      │
+│          └────────────────┬───────────────┘                      │
+│                           │                                      │
+│                           ▼                                      │
+│                  ┌─────────────────┐                             │
+│                  │    ChromaDB     │                             │
+│                  │  (Vector Store) │                             │
+│                  └─────────────────┘                             │
+│                                                                  │
+│          ChromaDB stores vectors + original text.                │
+│          Think of it as a searchable index where                 │
+│          "search" means "find similar vectors."                  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+#### Phase 2: Retrieval (Every Query)
+
+When a user asks a question:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RETRIEVAL PHASE                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   User Question: "How do I configure SSL offloading?"           │
+│                           │                                      │
+│                           ▼                                      │
+│            ┌───────────────────────────┐                         │
+│            │     Embedding Model       │                         │
+│            │     (all-MiniLM-L6)       │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│       Why embed the question? To search ChromaDB, we need        │
+│       to compare vectors. The question must become a vector      │
+│       so we can find chunks with similar vectors.                │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │   Question Vector         │                         │
+│            │   [0.25, -0.42, 0.15...]  │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │       ChromaDB           │                         │
+│            │   Similarity Search       │                         │
+│            │   (cosine distance)       │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│       How it works: ChromaDB compares the question vector        │
+│       against ALL stored chunk vectors using cosine similarity.  │
+│       Vectors pointing in similar directions = similar meaning.  │
+│                          │                                       │
+│       Example distances:                                         │
+│       • "SSL offloading steps..." → 0.15 (very similar!)        │
+│       • "Create Client SSL..."    → 0.22 (similar)              │
+│       • "Round Robin algorithm"   → 0.89 (not similar)          │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │   Top-K Results (k=3)     │                         │
+│            │                           │                         │
+│            │   1. "To configure SSL    │                         │
+│            │      offloading, first    │                         │
+│            │      import your cert..." │                         │
+│            │                           │                         │
+│            │   2. "Create a Client     │                         │
+│            │      SSL profile under    │                         │
+│            │      Local Traffic..."    │                         │
+│            │                           │                         │
+│            │   3. "Attach the SSL      │                         │
+│            │      profile to your      │                         │
+│            │      virtual server..."   │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│       We retrieve the original TEXT (not vectors) of the        │
+│       most similar chunks. These become our context.             │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │    Prompt Construction    │                         │
+│            │                           │                         │
+│            │  "You are an F5 expert.   │                         │
+│            │   Use this context:       │                         │
+│            │                           │                         │
+│            │   [Retrieved chunks...]   │                         │
+│            │                           │                         │
+│            │   Question: How do I      │                         │
+│            │   configure SSL...?"      │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│       Why inject context? The LLM doesn't "know" F5 docs.        │
+│       By putting relevant text in the prompt, we give it         │
+│       the information needed to answer accurately.               │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │       TinyLlama LLM       │                         │
+│            │    (generates response)   │                         │
+│            └─────────────┬─────────────┘                         │
+│                          │                                       │
+│       The LLM reads the context and question, then generates     │
+│       an answer. It's essentially "open-book" - the model        │
+│       synthesizes an answer FROM the provided context.           │
+│                          │                                       │
+│                          ▼                                       │
+│            ┌───────────────────────────┐                         │
+│            │   Generated Response      │                         │
+│            │                           │                         │
+│            │   "To configure SSL       │                         │
+│            │    offloading on BIG-IP:  │                         │
+│            │    1. Import your SSL     │                         │
+│            │       certificate...      │                         │
+│            │    2. Create a Client     │                         │
+│            │       SSL profile..."     │                         │
+│            └───────────────────────────┘                         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Why This Architecture?
+
+| Problem | Solution |
+|---------|----------|
+| LLMs have knowledge cutoffs and gaps | RAG injects current/domain knowledge at query time |
+| Can't search text by meaning with keywords | Embeddings enable semantic search ("SSL setup" finds "certificate configuration") |
+| Full documents don't fit in LLM context | Chunking + retrieval finds just the relevant parts |
+| LLMs can hallucinate facts | Grounding in retrieved documents improves accuracy |
+| Updating LLM knowledge requires retraining | Just update the document store - no retraining needed |
+
+#### Key Insight: Two Different Models
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   EMBEDDING MODEL                    LLM (TinyLlama)            │
+│   (all-MiniLM-L6-v2)                                            │
+│                                                                  │
+│   Purpose: Convert text → vectors    Purpose: Generate text     │
+│                                                                  │
+│   Input:  "SSL offloading"           Input:  Full prompt with   │
+│   Output: [0.23, -0.45, ...]                 context + question │
+│           (384 numbers)              Output: Natural language   │
+│                                              answer              │
+│                                                                  │
+│   Used for: SEARCHING                Used for: ANSWERING        │
+│   (finding relevant docs)            (generating response)      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The embedding model and LLM serve completely different purposes. The embedding model is small and fast (80MB) - optimized for creating searchable representations. The LLM is larger (2GB quantized) - optimized for understanding and generating language.
 
 ---
 
