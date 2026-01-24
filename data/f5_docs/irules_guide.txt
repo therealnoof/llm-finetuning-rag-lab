@@ -84,9 +84,17 @@ set current_pool [LB::server pool]
 ```
 
 ### Redirects and Responses
+
+The HTTP::redirect command redirects the current HTTP request to the specified URL. This command sends the redirect response to the client immediately. You cannot invoke this command multiple times while processing a single HTTP request, nor can you use any other commands that modify response headers or content after you give this command.
+
+HTTP::redirect always sends an HTTP 302 (Temporary Redirect) status code. For a 301 (Permanent Redirect), use HTTP::respond with a Location header instead.
+
 ```tcl
-# HTTP redirect
+# HTTP redirect (302 Temporary)
 HTTP::redirect "https://www.example.com[HTTP::uri]"
+
+# HTTP redirect (301 Permanent) - use HTTP::respond
+HTTP::respond 301 Location "https://[HTTP::host][HTTP::uri]"
 
 # Custom response
 HTTP::respond 200 content "OK" "Content-Type" "text/plain"
@@ -124,13 +132,49 @@ log local0.info "Informational message"
 ## Common Use Cases
 
 ### 1. HTTP to HTTPS Redirect
+
+Basic redirect - redirects all HTTP traffic to HTTPS while preserving the host and URI:
 ```tcl
 when HTTP_REQUEST {
-    if { [HTTP::host] ne "" } {
+    HTTP::redirect "https://[HTTP::host][HTTP::uri]"
+}
+```
+
+If your HTTP virtual server uses a non-standard port (not 80), the host header may include the port number. Use getfield to extract just the hostname:
+```tcl
+when HTTP_REQUEST {
+    HTTP::redirect "https://[getfield [HTTP::host] ":" 1][HTTP::uri]"
+}
+```
+
+For a permanent redirect (301) instead of temporary (302), use HTTP::respond with Location header:
+```tcl
+when HTTP_REQUEST {
+    HTTP::respond 301 Location "https://[HTTP::host][HTTP::uri]"
+}
+```
+
+Conditional redirect - only redirect URIs containing "secure":
+```tcl
+when HTTP_REQUEST {
+    if { [HTTP::uri] contains "secure" } {
+        HTTP::redirect "https://[getfield [HTTP::host] ":" 1][HTTP::uri]"
+    }
+}
+```
+
+Redirect with www prefix normalization:
+```tcl
+when HTTP_REQUEST {
+    if { [HTTP::host] starts_with "example.com" } {
+        HTTP::redirect "https://www.example.com[HTTP::uri]"
+    } else {
         HTTP::redirect "https://[HTTP::host][HTTP::uri]"
     }
 }
 ```
+
+Important: The HTTP::redirect command requires the HTTP profile to be attached to the virtual server to access HOST and URI information. This command sends the redirect immediately - no further header or content modifications can occur after calling HTTP::redirect.
 
 ### 2. URI-Based Pool Selection
 ```tcl
