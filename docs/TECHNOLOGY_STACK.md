@@ -404,6 +404,125 @@ The embedding model and LLM serve completely different purposes. The embedding m
 
 **Why we use it**: Central hub for accessing models and standardized training loops.
 
+### Tokenizer
+
+**What it does**: A tokenizer converts human-readable text into numbers (token IDs) that the model can process, and converts the model's output back into text.
+
+#### Why Tokenizers Are Necessary
+
+Neural networks only understand numbers, not text. The tokenizer is the translator between human language and the model's numeric world:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     TOKENIZATION PROCESS                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Input Text: "Configure SSL offloading"                        │
+│                          │                                       │
+│                          ▼                                       │
+│                    ┌───────────┐                                 │
+│                    │ Tokenizer │                                 │
+│                    └─────┬─────┘                                 │
+│                          │                                       │
+│                          ▼                                       │
+│   Step 1: Split into subwords (tokens)                          │
+│                                                                  │
+│   "Configure" → ["Con", "fig", "ure"]                           │
+│   "SSL"       → ["SS", "L"]                                     │
+│   "offloading"→ ["off", "load", "ing"]                          │
+│                                                                  │
+│   Why subwords? The model can't store every possible word.      │
+│   Instead, it learns ~32,000 common subwords and combines       │
+│   them. This handles new/rare words like "BIG-IP" or "iRule".   │
+│                          │                                       │
+│                          ▼                                       │
+│   Step 2: Convert to token IDs (numbers)                        │
+│                                                                  │
+│   ["Con", "fig", "ure", "SS", "L", "off", "load", "ing"]        │
+│              ↓                                                   │
+│   [1128, 2500, 545, 5765, 43, 1283, 2613, 292]                  │
+│                                                                  │
+│   Each subword maps to a unique ID in the vocabulary.           │
+│   These IDs are what the neural network actually processes.     │
+│                          │                                       │
+│                          ▼                                       │
+│   ┌─────────────────────────────────────────┐                   │
+│   │           TinyLlama Model               │                   │
+│   │   (processes token IDs, outputs new IDs)│                   │
+│   └─────────────────────────────────────────┘                   │
+│                          │                                       │
+│                          ▼                                       │
+│   Step 3: Decode output IDs back to text                        │
+│                                                                  │
+│   [1762, 2891, 445, ...] → "To configure SSL offloading..."    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Key Tokenizer Concepts
+
+| Concept | Explanation |
+|---------|-------------|
+| **Vocabulary** | Fixed set of ~32,000 tokens the model knows. TinyLlama uses the LLaMA tokenizer vocabulary. |
+| **Subword tokenization** | Words are split into pieces. "unhappiness" → ["un", "happiness"] or ["un", "hap", "pi", "ness"] |
+| **Special tokens** | Control tokens like `<s>` (start), `</s>` (end), `<pad>` (padding). Used for formatting. |
+| **Token IDs** | Integer indices into the vocabulary. "hello" might be token ID 12345. |
+| **Encoding** | Text → token IDs (what we send to the model) |
+| **Decoding** | Token IDs → text (what we show to users) |
+
+#### Why Each Model Needs Its Own Tokenizer
+
+Different models use different vocabularies and tokenization algorithms:
+
+```python
+# TinyLlama tokenizer
+tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+
+# Same text, different tokenization per model:
+# GPT-2:     "Hello" → [15496]           (1 token)
+# LLaMA:     "Hello" → [10994]           (1 token, different ID)
+# BERT:      "Hello" → [7592]            (1 token, different ID)
+```
+
+The model's weights are trained expecting specific token IDs. Using the wrong tokenizer would be like speaking French to someone who only understands Japanese - the IDs would map to wrong meanings.
+
+#### Context Length and Token Counting
+
+Models have maximum context lengths measured in **tokens, not characters**:
+
+```
+TinyLlama context limit: 2,048 tokens
+
+Example token counts:
+• "Hello"                           →  1 token
+• "SSL offloading configuration"    →  4 tokens
+• A typical paragraph (100 words)   → ~130 tokens
+• This entire documentation file    → ~3,500 tokens (too long!)
+```
+
+This is why RAG chunks documents - we need retrieved context + question + response to fit within the token limit.
+
+#### Tokenizer in Our Code
+
+```python
+# Load the tokenizer that matches our model
+tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+
+# Set padding token (required for batch processing)
+tokenizer.pad_token = tokenizer.eos_token
+
+# Encoding: text → tokens
+input_ids = tokenizer.encode("What is SSL offloading?")
+# Result: [1, 1724, 338, 17122, 1283, 13789, 29973]
+
+# Decoding: tokens → text
+text = tokenizer.decode([1, 1724, 338, 17122, 1283, 13789, 29973])
+# Result: "<s> What is SSL offloading?"
+
+# The pipeline handles this automatically:
+pipeline("text-generation", model=model, tokenizer=tokenizer)
+```
+
 ### Datasets (Hugging Face)
 **What it does**: Library for loading, processing, and sharing datasets. Provides memory-efficient data handling via Apache Arrow.
 
