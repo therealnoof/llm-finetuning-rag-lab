@@ -41,6 +41,10 @@ By the end of this lab, students will be able to:
 
 ### Option 1: Google Colab (Recommended)
 
+Go to Google Colab and create a Free account. https://colab.research.google.com/
+We are recommending using Google Colab for two reasons, 1. It offers a free GPU and 2. the serverless functions are also free
+After creating a free account Git clone this repo in VSCode or have the notebooks on your desktop for easy upload.
+
 1. Open the notebooks in Google Colab:
    - [Module 1: Setup & Base Model](notebooks/01_Setup_and_Base_Model.ipynb)
    - [Module 2: RAG System](notebooks/02_RAG_System.ipynb)
