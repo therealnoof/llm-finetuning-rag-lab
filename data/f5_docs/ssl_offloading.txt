@@ -1,8 +1,10 @@
-# F5 BIG-IP SSL/TLS Offloading Guide
+# F5 BIG-IP SSL/TLS Traffic Management Guide
 
 ## Introduction
 
-SSL/TLS offloading transfers the cryptographic processing of encrypted traffic from backend servers to BIG-IP. This improves server performance, centralizes certificate management, and enables traffic inspection and manipulation.
+SSL/TLS offloading transfers the cryptographic processing of encrypted traffic from backend servers to BIG-IP. The BIG-IP system processes SSL handshakes normally performed by destination servers, decrypting client requests and encrypting responses. This offloads computational burden from backend servers while enabling traffic inspection and manipulation.
+
+In BIG-IP 17.0, TLS 1.3 is supported with RFC 8446. The system handles protocol negotiation based on client capabilities and configured cipher suites.
 
 ## SSL Offloading Architectures
 
@@ -11,7 +13,7 @@ BIG-IP terminates SSL from clients and sends unencrypted traffic to servers.
 
 Traffic flow:
 1. Client connects via HTTPS (encrypted)
-2. BIG-IP decrypts traffic
+2. BIG-IP decrypts traffic using Client SSL profile
 3. BIG-IP sends HTTP (unencrypted) to servers
 4. Server responds via HTTP
 5. BIG-IP encrypts response
@@ -28,8 +30,8 @@ BIG-IP terminates client SSL and creates new SSL connections to servers.
 
 Traffic flow:
 1. Client connects via HTTPS
-2. BIG-IP decrypts (Client SSL)
-3. BIG-IP re-encrypts (Server SSL)
+2. BIG-IP decrypts (Client SSL profile)
+3. BIG-IP re-encrypts (Server SSL profile)
 4. Server receives encrypted traffic
 5. Response follows reverse path
 
@@ -46,66 +48,87 @@ Limitations:
 - No content manipulation
 - Limited to L4 load balancing
 
-## SSL Profiles
+## SSL Profile Architecture
 
-### Client SSL Profile
-Handles incoming SSL connections from clients.
+### Client SSL Profiles
+Enable the BIG-IP to decrypt inbound client traffic and encrypt outbound responses.
 
-Key settings:
-- Certificate and key (required)
-- Certificate chain (intermediate certs)
-- Cipher suite configuration
-- SSL/TLS version settings
-- Client certificate authentication
-- Session caching
+Key configurations:
+- **Certificate Key Chains**: Support multiple key types (RSA, DSA, ECDSA) to negotiate appropriate cipher suites with different clients
+- **Cipher Configuration**: Select predefined cipher groups or manually specify custom cipher strings
+- **Client Authentication**: Options include Ignore (default), Request (optional), or Require (mandatory)
+- **Session Caching**: Cache size defaults to 262,144 sessions; timeout defaults to 3,600 seconds
 
-Configuration:
+Creating a Custom Client SSL Profile:
+1. Navigate to Local Traffic > Profiles > SSL > Client
+2. Create profile with parent "clientssl" and enable Advanced configuration
+3. Define Certificate Key Chains with minimum RSA certificate/key pair
+4. Configure cipher settings (group or custom string)
+5. Assign to virtual server
+
+TMSH Configuration:
 ```bash
-# Create Client SSL profile
+# Create Client SSL profile with certificate key chain
 tmsh create ltm profile client-ssl my_clientssl {
-    cert my_cert.crt
-    key my_cert.key
-    chain my_chain.crt
-    ciphers 'TLSv1.2:!SSLv3:!ADH:!EXPORT'
+    cert-key-chain {
+        my_chain {
+            cert my_cert.crt
+            key my_cert.key
+            chain my_intermediate.crt
+        }
+    }
+    ciphers 'DEFAULT'
+    options { dont-insert-empty-fragments no-tlsv1 no-tlsv1.1 }
 }
 ```
 
-### Server SSL Profile
-Handles outgoing SSL connections to backend servers.
+### Server SSL Profiles
+Enable encryption/decryption for server-side connections to backend servers.
 
-Key settings:
-- Server certificate verification
-- Trusted CA certificates
-- Server name indication (SNI)
-- SSL/TLS version settings
-- Cipher configuration
+Key configurations:
+- **Server Authentication**: Verify backend certificate validity before establishing connections
+- **Certificate Validation**: Check expiration, trust status, and revocation via CRL or OCSP
+- **Proxy SSL**: Allow direct client-server certificate authentication through the BIG-IP intermediary
+- **Server Name Indication (SNI)**: Specify hostname for servers hosting multiple certificates
 
-Configuration:
+Creating a Custom Server SSL Profile:
+1. Access Local Traffic > Profiles > SSL > Server
+2. Select parent "serverssl" with Advanced configuration
+3. Specify certificate, key, and chain from system certificates
+4. Configure server authentication requirements
+5. Define certificate validation parameters
+
+TMSH Configuration:
 ```bash
-# Create Server SSL profile
+# Create Server SSL profile with server authentication
 tmsh create ltm profile server-ssl my_serverssl {
-    ca-file trusted_ca.crt
-    server-name example.com
-    ciphers 'TLSv1.2:!SSLv3'
+    ca-file trusted_ca_bundle.crt
+    server-name www.example.com
+    authenticate require
+    authenticate-depth 3
 }
 ```
 
 ## Certificate Management
 
-### Certificate Types
-- Self-signed - For testing only
-- CA-signed - Production standard
-- Wildcard - Covers multiple subdomains
-- SAN (Subject Alternative Name) - Multiple domains on one cert
-- EV (Extended Validation) - Highest trust level
+### Certificate Key Chains
+BIG-IP supports multiple key types in a single Client SSL profile:
+- RSA certificates (2048-bit or higher recommended)
+- DSA certificates
+- ECDSA certificates (faster performance)
+
+This allows negotiation of appropriate cipher suites based on client capabilities.
 
 ### Certificate and Key Import
 ```bash
 # Import certificate
 tmsh install sys crypto cert my_cert from-local-file /var/tmp/cert.crt
 
-# Import key
+# Import private key
 tmsh install sys crypto key my_key from-local-file /var/tmp/key.key
+
+# Import certificate bundle/chain
+tmsh install sys crypto cert my_chain from-local-file /var/tmp/chain.crt
 
 # Verify certificate details
 tmsh list sys crypto cert my_cert
@@ -117,20 +140,25 @@ Proper chain order (bottom to top):
 2. Intermediate CA(s)
 3. Root CA (optional - usually in client trust store)
 
-```bash
-# Create certificate bundle
-cat server.crt intermediate.crt > bundle.crt
+Use certificate chains containing intermediate CA certificates for complete validation paths.
 
-# Import as chain
-tmsh install sys crypto cert my_chain from-local-file /var/tmp/bundle.crt
-```
+### Certificate Best Practices for High Availability
+- Always use non-default certificate names in Device Service Clustering (DSC) Sync-Failover configurations
+- Ensure identical certificate specifications across device group instances to enable successful failover
+- Protect passphrases; the system automatically encrypts them
 
-## Cipher Suite Configuration
+## Cipher Configuration
+
+### Cipher Groups vs Custom Strings
+BIG-IP offers two approaches:
+1. **Cipher Groups**: Predefined, managed sets of ciphers (recommended)
+2. **Custom Cipher Strings**: Manual specification for specific requirements
 
 ### Cipher String Syntax
 ```
 # Format: keyword[:keyword]
 TLSv1.2          # TLS 1.2 ciphers only
+TLSv1.3          # TLS 1.3 ciphers only
 !SSLv3           # Exclude SSL 3.0
 !ADH             # Exclude anonymous DH
 !EXPORT          # Exclude export ciphers
@@ -140,12 +168,12 @@ TLSv1.2          # TLS 1.2 ciphers only
 
 ### Recommended Cipher Strings
 
-Modern (TLS 1.2+):
+Modern (TLS 1.2+ with TLS 1.3):
 ```
 TLSv1.2+TLSv1.3:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK
 ```
 
-Compatibility (wider support):
+Compatibility (wider client support):
 ```
 ECDHE+AESGCM:DHE+AESGCM:ECDHE+AES:DHE+AES:!aNULL:!MD5:!DSS
 ```
@@ -156,27 +184,16 @@ tmsh list ltm profile client-ssl my_clientssl ciphers
 tmsh run util bash -c "openssl ciphers -v 'CIPHER_STRING'"
 ```
 
-## TLS Version Configuration
-
-### Recommended Settings
-```bash
-# Client SSL profile - disable older versions
-tmsh modify ltm profile client-ssl my_clientssl {
-    options { dont-insert-empty-fragments no-tlsv1 no-tlsv1.1 }
-}
-```
-
-Version settings:
-- no-sslv2 - Disable SSL 2.0 (always)
-- no-sslv3 - Disable SSL 3.0 (recommended)
-- no-tlsv1 - Disable TLS 1.0 (recommended)
-- no-tlsv1.1 - Disable TLS 1.1 (recommended)
-
 ## Client Certificate Authentication
 
-Mutual TLS (mTLS) requires clients to present certificates.
+Mutual TLS (mTLS) requires clients to present certificates for authentication.
 
-Configuration:
+### Authentication Modes
+- **Ignore** (default): Don't request client certificate
+- **Request**: Request certificate but don't require it
+- **Require**: Require valid client certificate to proceed
+
+### Configuration
 ```bash
 # Require client certificate
 tmsh modify ltm profile client-ssl my_clientssl {
@@ -185,43 +202,22 @@ tmsh modify ltm profile client-ssl my_clientssl {
 }
 ```
 
-Modes:
-- ignore - Don't request client cert
-- request - Request but don't require
-- require - Require valid client cert
-
-Access client cert in iRule:
+### Access Client Certificate in iRules
 ```tcl
 when CLIENTSSL_CLIENTCERT {
     set subject [SSL::cert subject]
     set issuer [SSL::cert issuer]
+    log local0. "Client cert subject: $subject"
 }
 ```
 
-## SSL Session Management
+### Client Certificate Constrained Delegation (C3D)
+When enabled (default), simplifies credential requirements through certificate-based delegation. The Generic Alert setting causes the system to send all SSL alerts using a generic handshake failure message for security.
 
-### Session Caching
-Improves performance by reusing session parameters.
+## Advanced Features
 
-```bash
-tmsh modify ltm profile client-ssl my_clientssl {
-    cache-size 262144
-    cache-timeout 3600
-}
-```
-
-### Session Tickets
-Alternative to server-side session caching.
-
-```bash
-tmsh modify ltm profile client-ssl my_clientssl {
-    session-ticket enabled
-}
-```
-
-## OCSP Stapling
-
-Improves certificate validation performance.
+### OCSP Stapling
+Certificates include revocation status without client-side lookups, improving performance by eliminating the need for clients to contact OCSP responders.
 
 ```bash
 # Create OCSP stapling profile
@@ -230,26 +226,59 @@ tmsh create ltm profile ocsp-stapling my_ocsp {
     sign-hash sha256
 }
 
-# Attach to client SSL profile
+# Enable in client SSL profile
 tmsh modify ltm profile client-ssl my_clientssl {
     ocsp-stapling enabled
     status-age 86400
 }
 ```
 
-## SSL Visibility (Forward Proxy)
+### Proxy SSL
+Allows direct client-server certificate authentication through the BIG-IP intermediary, enabling:
+- Pass-through of client certificates to backend servers
+- End-to-end certificate-based authentication
+- Visibility into encrypted traffic while maintaining certificate chain
 
-Intercept and inspect outbound SSL traffic.
+### Dynamic Record Sizing
+Enable "Allow Dynamic Record Sizing" for improved TLS performance by adjusting record sizes based on connection state:
+```bash
+tmsh modify ltm profile client-ssl my_clientssl {
+    allow-dynamic-record-sizing enabled
+}
+```
 
-Components:
-- Forward Proxy SSL profile
-- CA certificate for signing
-- Bypass rules (for sensitive sites)
+### Session Management
+Configure based on workload patterns:
+```bash
+tmsh modify ltm profile client-ssl my_clientssl {
+    cache-size 262144
+    cache-timeout 3600
+    session-ticket enabled
+}
+```
 
-Use cases:
-- Outbound traffic inspection
-- DLP integration
-- Threat protection
+### Renegotiation Settings
+Balance security with throughput by configuring:
+- Renegotiation period
+- Renegotiation size
+- Maximum renegotiation records
+
+## TLS Version Configuration
+
+### Recommended Settings
+```bash
+# Client SSL profile - disable older versions, enable TLS 1.3
+tmsh modify ltm profile client-ssl my_clientssl {
+    options { dont-insert-empty-fragments no-tlsv1 no-tlsv1.1 }
+}
+```
+
+Version settings:
+- no-sslv2 - Disable SSL 2.0 (always disable)
+- no-sslv3 - Disable SSL 3.0 (recommended)
+- no-tlsv1 - Disable TLS 1.0 (recommended)
+- no-tlsv1.1 - Disable TLS 1.1 (recommended)
+- TLS 1.2 and TLS 1.3 - Enable (recommended)
 
 ## Perfect Forward Secrecy (PFS)
 
@@ -265,26 +294,26 @@ tmsh modify ltm profile client-ssl my_clientssl {
 ## Performance Optimization
 
 ### Hardware Acceleration
-BIG-IP platforms include SSL acceleration hardware.
-
-Monitor performance:
+BIG-IP platforms include SSL acceleration hardware. Monitor performance:
 ```bash
 tmsh show sys performance ssl
 ```
 
 ### Optimization Tips
-1. Enable session caching or tickets
+1. Enable session caching or session tickets
 2. Use ECDSA certificates (faster than RSA)
 3. Prefer ECDHE over DHE for key exchange
-4. Use appropriate key sizes (RSA 2048 sufficient)
+4. Use appropriate key sizes (RSA 2048 sufficient for most cases)
 5. Enable OCSP stapling
-6. Consider TLS 1.3 for improved handshake
+6. Consider TLS 1.3 for improved handshake performance
+7. Enable dynamic record sizing
+8. Select appropriate hash algorithms (SHA256, SHA384)
 
 ## Troubleshooting
 
 ### Common Issues
-1. Certificate chain incomplete - Add intermediate certs
-2. Certificate mismatch - Verify hostname matches
+1. Certificate chain incomplete - Add intermediate certificates
+2. Certificate mismatch - Verify hostname matches certificate CN/SAN
 3. Cipher mismatch - Check client/server cipher overlap
 4. Protocol mismatch - Enable compatible TLS versions
 
@@ -298,17 +327,21 @@ tmsh show ltm profile client-ssl my_clientssl
 
 # Check certificate expiration
 openssl s_client -connect host:443 2>/dev/null | openssl x509 -noout -dates
+
+# Test SSL configuration
+openssl s_client -connect host:443 -tls1_2
+openssl s_client -connect host:443 -tls1_3
 ```
 
 ## Best Practices
 
-1. Use TLS 1.2 or higher only
-2. Implement strong cipher suites
-3. Enable Perfect Forward Secrecy
-4. Maintain proper certificate chains
-5. Monitor certificate expiration
-6. Enable OCSP stapling
+1. Use TLS 1.2 or higher only (TLS 1.3 recommended)
+2. Implement strong cipher suites with cipher groups
+3. Enable Perfect Forward Secrecy (ECDHE preferred)
+4. Maintain proper certificate chains with intermediates
+5. Monitor certificate expiration proactively
+6. Enable OCSP stapling for performance
 7. Use appropriate key sizes (2048+ bit RSA, 256+ bit ECDSA)
 8. Regularly update to address vulnerabilities
-9. Document certificate renewal procedures
+9. Use non-default certificate names in HA configurations
 10. Test SSL configuration with external scanners
