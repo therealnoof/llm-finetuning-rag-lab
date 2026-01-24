@@ -1,0 +1,337 @@
+# Technology Stack
+
+This document provides an overview of all technologies used in the F5 AI Technical Assistant Training Lab, explaining what each component does and why it was chosen.
+
+---
+
+## Table of Contents
+- [Overview](#overview)
+- [Base Model](#base-model)
+- [Quantization & Memory Optimization](#quantization--memory-optimization)
+- [Fine-Tuning Stack](#fine-tuning-stack)
+- [RAG Stack](#rag-stack)
+- [Core ML Infrastructure](#core-ml-infrastructure)
+- [Environment](#environment)
+- [Version Summary](#version-summary)
+
+---
+
+## Overview
+
+This project demonstrates two approaches to creating a domain-specific AI assistant:
+
+1. **RAG (Retrieval-Augmented Generation)**: Enhances a base model with external knowledge at inference time
+2. **Fine-Tuning with QLoRA**: Trains the model to internalize domain knowledge and terminology
+
+The tech stack was selected to run entirely on Google Colab's free tier (T4 GPU with 16GB VRAM).
+
+---
+
+## Base Model
+
+### TinyLlama/TinyLlama-1.1B-Chat-v1.0
+| Attribute | Value |
+|-----------|-------|
+| Parameters | 1.1 billion |
+| Architecture | LLaMA-based decoder-only transformer |
+| Context Length | 2,048 tokens |
+| Training Data | 3 trillion tokens (SlimPajama, StarCoder) |
+| License | Apache 2.0 |
+
+**What it does**: TinyLlama is a compact large language model that provides strong performance relative to its size. The chat-tuned version has been instruction-fine-tuned for conversational use.
+
+**Why we use it**:
+- Small enough to fit in Colab's free T4 GPU memory (~2GB when 4-bit quantized)
+- Fast inference and training times for a workshop setting
+- Good baseline capabilities for demonstrating improvement via RAG/fine-tuning
+- Open license allows unrestricted use
+
+---
+
+## Quantization & Memory Optimization
+
+### BitsAndBytes
+| Component | Purpose |
+|-----------|---------|
+| `load_in_4bit` | Reduces model weights from 16-bit to 4-bit |
+| `nf4` quantization | Normalized float 4-bit format optimized for neural networks |
+| `double_quant` | Quantizes the quantization constants for additional savings |
+
+**What it does**: BitsAndBytes enables loading and running large models in reduced precision, dramatically cutting memory requirements while maintaining most of the model's capabilities.
+
+**Why we use it**:
+- Reduces TinyLlama from ~4.4GB to ~2GB VRAM
+- Enables fine-tuning on consumer GPUs
+- Minimal quality degradation with NF4 quantization
+
+### Accelerate
+**What it does**: Hugging Face's library for distributed and mixed-precision training. Handles device placement, gradient accumulation, and multi-GPU setups automatically.
+
+**Why we use it**: Required by Transformers for efficient model loading with `device_map="auto"`.
+
+---
+
+## Fine-Tuning Stack
+
+### PEFT (Parameter-Efficient Fine-Tuning)
+**What it does**: Instead of updating all model weights, PEFT methods add small trainable adapters while freezing the base model. This dramatically reduces:
+- Memory needed for training
+- Storage for saved models
+- Risk of catastrophic forgetting
+
+**Key concepts**:
+- **LoRA (Low-Rank Adaptation)**: Decomposes weight updates into low-rank matrices
+- **Adapter size**: Controlled by `r` (rank) parameter - higher = more capacity but more memory
+
+### QLoRA Configuration
+```python
+LoraConfig(
+    r=16,                    # Rank of update matrices
+    lora_alpha=16,           # Scaling factor
+    target_modules=[         # Which layers to adapt
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj"
+    ],
+    lora_dropout=0.05,       # Regularization
+    bias="none",             # Don't train biases
+    task_type="CAUSAL_LM"    # Decoder-only language model
+)
+```
+
+**Why we use it**: QLoRA combines 4-bit quantization with LoRA adapters, enabling fine-tuning of billion-parameter models on a single consumer GPU.
+
+### TRL (Transformer Reinforcement Learning)
+**What it does**: Hugging Face's library for training language models with various objectives including supervised fine-tuning (SFT), reinforcement learning from human feedback (RLHF), and direct preference optimization (DPO).
+
+**Component used**: `SFTTrainer` - Supervised Fine-Tuning Trainer
+
+**Why we use SFTTrainer**:
+- Handles chat template formatting automatically
+- Integrates seamlessly with PEFT/LoRA
+- Manages gradient accumulation and mixed precision
+- Provides training callbacks and logging
+
+### Unsloth
+**What it does**: Optimized kernels and training loops that accelerate fine-tuning by 2x while reducing memory usage by up to 60%.
+
+**Key optimizations**:
+- Custom CUDA kernels for attention and MLP layers
+- Fused operations to reduce memory bandwidth
+- Gradient checkpointing optimizations
+
+**Why we use it**: Makes training feasible within Colab's session time limits and memory constraints.
+
+---
+
+## RAG Stack
+
+### LangChain
+**What it does**: Framework for building applications with LLMs. Provides abstractions for:
+- Document loading and processing
+- Text splitting and chunking
+- Vector store integration
+- Retrieval chains
+
+**Components used**:
+| Component | Purpose |
+|-----------|---------|
+| `DirectoryLoader` | Load all .txt files from a directory |
+| `TextLoader` | Parse plain text files |
+| `RecursiveCharacterTextSplitter` | Split documents into overlapping chunks |
+
+**Why we use it**: Industry-standard framework with extensive documentation and integrations.
+
+### ChromaDB
+**What it does**: Open-source vector database that stores embeddings and enables similarity search. Runs entirely in-memory or persisted to disk.
+
+**Key features**:
+- No external server required (embedded mode)
+- Automatic embedding management
+- Metadata filtering
+- Multiple distance metrics (cosine, L2, IP)
+
+**Why we use it**:
+- Zero configuration - works out of the box
+- No API keys or external services needed
+- Fast enough for demo/workshop purposes
+- Persists to disk for reuse across sessions
+
+### Sentence-Transformers
+**What it does**: Library for computing dense vector embeddings of text using transformer models. These embeddings capture semantic meaning, enabling similarity search.
+
+**Model used**: `all-MiniLM-L6-v2`
+| Attribute | Value |
+|-----------|-------|
+| Dimensions | 384 |
+| Max Sequence | 256 tokens |
+| Size | ~80MB |
+| Speed | Very fast |
+
+**Why we use it**:
+- Free and runs locally (no API costs)
+- Good balance of quality and speed
+- Small enough to load alongside the LLM
+- Well-suited for technical documentation retrieval
+
+### RAG Pipeline Flow
+```
+User Question
+     │
+     ▼
+┌─────────────┐
+│  Embedding  │  ← all-MiniLM-L6-v2
+│   Model     │
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  ChromaDB   │  ← Similarity search (top-k=3)
+│Vector Store │
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Retrieved  │  ← Relevant document chunks
+│   Context   │
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  TinyLlama  │  ← Generate answer with context
+│     LLM     │
+└─────────────┘
+     │
+     ▼
+   Response
+```
+
+---
+
+## Core ML Infrastructure
+
+### PyTorch
+**What it does**: Deep learning framework providing tensors, automatic differentiation, and GPU acceleration. The foundation for all model operations.
+
+**Why we use it**: Industry standard, required by Transformers and all other ML libraries in the stack.
+
+### Transformers (Hugging Face)
+**What it does**: Library providing pre-trained models, tokenizers, and training utilities for NLP tasks.
+
+**Components used**:
+| Component | Purpose |
+|-----------|---------|
+| `AutoModelForCausalLM` | Load decoder-only language models |
+| `AutoTokenizer` | Load model-specific tokenizers |
+| `BitsAndBytesConfig` | Configure quantization settings |
+| `pipeline` | High-level inference API |
+| `TrainingArguments` | Configure training hyperparameters |
+
+**Why we use it**: Central hub for accessing models and standardized training loops.
+
+### Datasets (Hugging Face)
+**What it does**: Library for loading, processing, and sharing datasets. Provides memory-efficient data handling via Apache Arrow.
+
+**Why we use it**: Efficient loading of JSONL training data with automatic batching.
+
+---
+
+## Environment
+
+### Google Colab
+**What it does**: Free cloud-based Jupyter notebook environment with GPU access.
+
+**Resources (Free Tier)**:
+| Resource | Specification |
+|----------|---------------|
+| GPU | NVIDIA T4 (16GB VRAM) |
+| RAM | ~12GB system memory |
+| Disk | ~100GB temporary storage |
+| Session | Up to 12 hours (may disconnect earlier) |
+
+**Why we use it**:
+- Free GPU access for all students
+- No local setup required
+- Pre-installed CUDA drivers
+- Easy notebook sharing
+
+### NVIDIA T4 GPU
+**What it does**: Data center GPU optimized for inference and light training workloads.
+
+**Specifications**:
+| Spec | Value |
+|------|-------|
+| CUDA Cores | 2,560 |
+| Tensor Cores | 320 |
+| Memory | 16GB GDDR6 |
+| FP16 Performance | 65 TFLOPS |
+
+**Why it works for this lab**:
+- 16GB VRAM sufficient for 4-bit quantized TinyLlama + training
+- Tensor cores accelerate mixed-precision training
+- Available free on Colab
+
+---
+
+## Version Summary
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `torch` | ≥2.0.0 | Deep learning framework |
+| `transformers` | 4.44.0 | Model loading and training |
+| `accelerate` | ≥0.33.0 | Distributed training utilities |
+| `peft` | ≥0.12.0 | Parameter-efficient fine-tuning |
+| `bitsandbytes` | ≥0.43.0 | Quantization |
+| `trl` | ≥0.9.0 | SFTTrainer |
+| `unsloth` | ≥2024.8 | Training acceleration |
+| `langchain` | ≥0.2.0 | RAG framework |
+| `langchain-community` | ≥0.2.0 | Document loaders |
+| `langchain-huggingface` | ≥0.0.3 | HuggingFace integrations |
+| `chromadb` | ≥0.5.0 | Vector database |
+| `sentence-transformers` | ≥3.0.0 | Embedding model |
+| `datasets` | ≥2.20.0 | Data loading |
+
+---
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Google Colab (T4 GPU)                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    TinyLlama 1.1B                        │    │
+│  │              (4-bit quantized via BitsAndBytes)          │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│           │                                    │                 │
+│           ▼                                    ▼                 │
+│  ┌─────────────────────┐            ┌─────────────────────┐     │
+│  │    Fine-Tuning      │            │        RAG          │     │
+│  │  ┌───────────────┐  │            │  ┌───────────────┐  │     │
+│  │  │   Unsloth     │  │            │  │  LangChain    │  │     │
+│  │  │   + QLoRA     │  │            │  │  + ChromaDB   │  │     │
+│  │  │   + PEFT      │  │            │  │  + MiniLM     │  │     │
+│  │  │   + TRL       │  │            │  └───────────────┘  │     │
+│  │  └───────────────┘  │            └─────────────────────┘     │
+│  └─────────────────────┘                                        │
+│           │                                    │                 │
+│           ▼                                    ▼                 │
+│  ┌─────────────────────┐            ┌─────────────────────┐     │
+│  │   LoRA Adapter      │            │   Vector Store      │     │
+│  │   (~20MB saved)     │            │   (F5 docs indexed) │     │
+│  └─────────────────────┘            └─────────────────────┘     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Further Reading
+
+- [TinyLlama Paper](https://arxiv.org/abs/2401.02385)
+- [QLoRA Paper](https://arxiv.org/abs/2305.14314)
+- [LoRA Paper](https://arxiv.org/abs/2106.09685)
+- [LangChain Documentation](https://python.langchain.com/)
+- [ChromaDB Documentation](https://docs.trychroma.com/)
+- [Hugging Face PEFT](https://huggingface.co/docs/peft)
+- [Unsloth GitHub](https://github.com/unslothai/unsloth)
