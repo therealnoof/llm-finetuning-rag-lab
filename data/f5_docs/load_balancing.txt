@@ -6,64 +6,107 @@ Load balancing distributes incoming traffic across multiple servers to optimize 
 
 ## Load Balancing Methods
 
-BIG-IP supports numerous load balancing algorithms to match different application requirements.
+BIG-IP supports numerous load balancing algorithms to match different application requirements. These methods are categorized as either **Static** (do not use real-time traffic metrics) or **Dynamic** (use current server performance metrics to distribute traffic).
 
 ### Static Methods
 
+Static load balancing methods do not use any traffic metrics from the node/pool member to distribute traffic. They follow predetermined algorithms.
+
 #### Round Robin
-Distributes requests sequentially across pool members. Each new request goes to the next server in line.
+Distributes requests in a circular and sequential pattern among pool members. Over time, each server receives an equal number of connections.
 - Best for: Homogeneous server environments with similar capacity
-- Pros: Simple, predictable distribution
-- Cons: Doesn't consider server load or capacity
+- Pros: Simple, predictable, equal distribution over time
+- Cons: Doesn't consider server load, capacity, or current performance
+- Use when: All servers have equal performance capabilities
 
 #### Ratio (Member)
-Distributes requests proportionally based on assigned weight values. Higher ratios receive more traffic.
-- Best for: Servers with different capacities
-- Example: Server A (ratio 3) receives 3x more requests than Server B (ratio 1)
+Distributes requests proportionally based on assigned weight values. Higher ratios receive more traffic. Uses weighted round robin to distribute requests based on assigned priority levels.
+- Best for: Servers with different capacities (e.g., newer vs older hardware)
+- Example: A ratio of 3:2:1:1 means of 8 requests, first server receives 3, second receives 2, remaining servers each get 1
+- Use when: You need to direct more traffic to more capable servers
 
 #### Ratio (Node)
-Similar to Ratio (Member) but weights are assigned at the node level, applying to all pool memberships.
+Similar to Ratio (Member) but weights are assigned at the node level, applying to all pool memberships for that node.
 
 ### Dynamic Methods
 
+Dynamic load balancing methods use real-time traffic metrics from the node to distribute traffic based on current conditions.
+
 #### Least Connections (Member)
-Sends requests to the pool member with the fewest active connections.
-- Best for: Applications with varying request processing times
-- Considers: Current connection count per member
+Distributes traffic to the pool member currently handling the fewest active connections. Only active connections are counted; idle connections are not included in the calculation.
+- Best for: Long-lived connections like FTP, SSH, or database connections
+- Behavior: If all servers have the same number of connections, distribution falls back to round-robin
+- Key difference from Round Robin: Adapts to actual server load in real-time
+- Use when: Request processing times vary significantly or connections persist for extended periods
 
 #### Least Connections (Node)
-Considers connection count at the node level across all pools.
+Considers connection count at the node level across all pools, useful when the same server participates in multiple pools.
 
 #### Fastest (Node)
-Routes to the server with the fastest response time based on TTFB (Time to First Byte).
+Routes connections to pool members based on server response time. Prioritizes servers that respond quickest.
 - Best for: Applications where server performance varies
-- Requires: Health monitor that measures response time
+- Requires: Health monitor that measures response time (TTFB - Time to First Byte)
+- Use when: Backend servers have varying performance characteristics
 
 #### Fastest (Application)
-Uses application-layer response times for routing decisions.
+Uses application-layer response times for routing decisions at Layer 7.
 
 #### Observed (Member)
-Combines connection count with response time for dynamic load distribution.
-- Ranks servers based on current performance
-- Adapts to changing conditions
+Combines connection count with response time for dynamic load distribution. Similar to Ratio but with automatically calculated ratios.
+- Servers below average connection counts receive a ratio of 3
+- Servers above average receive a ratio of 2
+- Adapts to changing conditions automatically
+- Use when: You want automatic ratio adjustment based on performance
 
 #### Predictive (Member)
-Analyzes performance trends to predict which server will perform best.
+An aggressive version of Observed that analyzes performance trends to predict which server will perform best.
+- Assigns ratios of 4 to underutilized servers
+- Assigns ratios of 1 to overutilized servers
 - Uses historical data for ranking
-- Best for: Environments with fluctuating loads
+- Best for: Environments with fluctuating or predictable load patterns
 
 #### Weighted Least Connections
 Combines static weights with dynamic connection counting.
 - Formula: (current_connections + 1) / weight
 - Routes to member with lowest calculated value
+- Use when: You need both capacity-based weighting and connection awareness
 
-### Other Methods
+### Advanced Dynamic Methods
+
+#### Round Trip Time (RTT)
+Distributes requests to the pool member with the fastest measured round trip time between the data center and client. Optimizes for geographic performance and network latency.
 
 #### Least Sessions
-Optimizes for session-based workloads by tracking active sessions.
+Optimizes for session-based workloads by tracking active sessions rather than connections.
 
 #### Dynamic Ratio
-Adjusts ratios dynamically based on probe data from servers.
+Adjusts ratios dynamically based on probe data from servers. Treats performance values as proportions rather than absolute selections.
+
+#### Packet Rate
+Distributes requests to the pool member currently processing the fewest number of packets per second. Useful for identifying underutilized servers.
+
+#### Kilobytes per Second
+Routes requests to the pool member currently processing the fewest kilobytes per second. Requires BIG-IP to collect throughput metrics.
+
+#### Completion Rate
+Distributes requests to the pool member that maintains the least number of dropped or timed-out packets during transactions. Prioritizes reliability.
+
+#### CPU
+Selects pool members that currently have the most CPU processing time available. Prevents overloading processors.
+
+#### Quality of Service (QoS)
+Uses current performance metrics to calculate an overall QoS score for each pool member. Considers multiple factors simultaneously: RTT, hops, completion rate, packet rate, throughput, topology, capacity, and custom scores. Provides holistic load distribution.
+
+### Choosing Between Round Robin and Least Connections
+
+| Aspect | Round Robin | Least Connections |
+|--------|-------------|-------------------|
+| Type | Static | Dynamic |
+| Metrics Used | None | Active connection count |
+| Distribution | Equal/Sequential | Based on current load |
+| Best For | Equal-capacity servers, short-lived requests | Long-lived connections (FTP, SSH, databases) |
+| Overhead | Minimal | Requires connection tracking |
+| Adaptability | None - ignores server state | Adapts to real-time conditions |
 
 ## Priority Groups
 
