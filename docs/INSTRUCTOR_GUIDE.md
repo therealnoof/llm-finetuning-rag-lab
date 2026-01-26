@@ -18,9 +18,9 @@ Before starting, ensure students have:
 |--------|----------|----------------|
 | Setup & Base Model | 20 min | Environment setup, baseline testing |
 | RAG System | 45 min | Document processing, vector store, retrieval |
-| Fine-tuning | 60 min | QLoRA training with Unsloth |
+| Fine-tuning | 30 min | QLoRA training with Unsloth |
 | Evaluation | 25 min | Comparison, metrics, discussion |
-| **Total** | **~2.5 hours** | |
+| **Total** | **~2 hours** | |
 
 Add 15-20 minutes buffer for questions and troubleshooting.
 
@@ -70,7 +70,7 @@ Add 15-20 minutes buffer for questions and troubleshooting.
 **Hands-on Exercise:**
 Ask students to query the system with their own F5 questions and observe which documents are retrieved.
 
-### Module 3: Fine-tuning with QLoRA (60 min)
+### Module 3: Fine-tuning with QLoRA (30 min)
 
 **Learning Objectives:**
 - Understand LoRA adapter concepts
@@ -83,7 +83,7 @@ Ask students to query the system with their own F5 questions and observe which d
 3. Unsloth provides significant speedup
 
 **Training Time Notes:**
-- With 150 examples, 3 epochs takes ~15-20 minutes on T4
+- With 150 examples, 1 epoch takes ~3-5 minutes on T4
 - Loss should decrease steadily
 - Final loss around 1.0-1.5 is typical
 
