@@ -311,7 +311,7 @@ GPU: Tesla T4
 
 ```bash
 # Register the virtual environment as a Jupyter kernel
-python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
+python3 -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
 ```
 
 ---
@@ -399,7 +399,7 @@ nvidia-smi
 watch -n 1 nvidia-smi
 
 # Clear GPU memory (if needed)
-python -c "import torch; torch.cuda.empty_cache()"
+python3 -c "import torch; torch.cuda.empty_cache()"
 ```
 
 ---
@@ -450,7 +450,7 @@ torch.cuda.empty_cache()
 ```bash
 # Re-register the kernel
 source ~/llm-finetuning-rag-lab/venv/bin/activate
-python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
+python3 -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
 ```
 
 ### Unsloth Import Errors
@@ -551,7 +551,7 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install -r requirements.txt
 pip install unsloth
 pip install jupyterlab notebook
-python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
+python3 -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
 
 echo "=== Lab setup complete! ==="
 echo "Run: cd ~/llm-finetuning-rag-lab && source venv/bin/activate && jupyter lab"
