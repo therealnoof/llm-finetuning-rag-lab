@@ -14,19 +14,23 @@ By the end of this lab, students will be able to:
 
 - Basic Python programming knowledge
 - Familiarity with machine learning concepts
-- Google account (for Colab access)
-- No local GPU required - everything runs on Colab free tier
+- **One of the following environments:**
+  - Google account (for Colab access) - Free option
+  - AWS account with g4dn instance - Private/corporate option
+  - Local machine with CUDA GPU (6GB+ VRAM)
 
 ## Tech Stack
 
 | Component | Tool | Rationale |
 |-----------|------|-----------|
-| Base Model | TinyLlama-1.1B-Chat | Small (2GB quantized), fits Colab free tier |
+| Base Model | TinyLlama-1.1B-Chat | Small (2GB quantized), fits free tier GPU |
 | Fine-tuning | Unsloth + QLoRA + PEFT | 2x faster, memory efficient |
 | RAG Framework | LangChain | Industry standard |
 | Vector DB | ChromaDB | Local, no API keys |
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 | Free, fast |
-| Environment | Google Colab (T4 GPU) | Free tier sufficient |
+| Environment | Google Colab / AWS g4dn / Local GPU | T4 GPU or equivalent |
+
+See [TECHNOLOGY_STACK.md](docs/TECHNOLOGY_STACK.md) for detailed explanations of each component.
 
 ## Lab Structure
 
@@ -56,7 +60,41 @@ Go to Google Colab and create a Free account. https://colab.research.google.com/
 
 3. Follow the notebooks sequentially
 
-### Option 2: Local Setup
+### Option 2: AWS g4dn Instance (Private Environment)
+
+For corporate or private training environments with dedicated GPU resources.
+
+```bash
+# Clone the repository
+git clone https://github.com/therealnoof/llm-finetuning-rag-lab.git
+cd llm-finetuning-rag-lab
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install PyTorch with CUDA support (for CUDA 12.1+)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Install all dependencies
+pip install -r requirements.txt
+
+# Install Unsloth with CUDA support
+pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
+
+# Start Jupyter Lab
+jupyter lab
+```
+
+See [AWS_SETUP.md](docs/AWS_SETUP.md) for detailed AWS environment setup instructions.
+
+**Benefits over Colab:**
+- No session timeouts or disconnections
+- Persistent storage (models/results saved between sessions)
+- 64GB RAM vs 12GB
+- Dedicated GPU (not shared)
+
+### Option 3: Local Setup
 
 ```bash
 # Clone the repository
@@ -103,9 +141,12 @@ LLM-FineTuning-RAG-Lab/
 │   ├── rag_utils.py         # RAG helper functions
 │   ├── training_utils.py    # Training utilities
 │   └── evaluation.py        # Evaluation metrics
+├── images/                  # Diagrams and screenshots
 └── docs/
     ├── INSTRUCTOR_GUIDE.md  # Teaching notes
-    └── TROUBLESHOOTING.md   # Common issues and solutions
+    ├── TROUBLESHOOTING.md   # Common issues and solutions
+    ├── TECHNOLOGY_STACK.md  # Detailed tech stack documentation
+    └── AWS_SETUP.md         # AWS environment setup guide
 ```
 
 ## Data Files
@@ -125,9 +166,16 @@ The `data/f5_docs/` directory contains curated F5 technical documentation coveri
 
 ## Verification Checklist
 
-### Pre-Lab
-- [ ] Colab has T4 GPU enabled
+### Pre-Lab (Google Colab)
+- [ ] Colab has T4 GPU enabled (Runtime > Change runtime type)
 - [ ] All dependencies install without errors
+- [ ] `torch.cuda.is_available()` returns `True`
+
+### Pre-Lab (AWS/Local)
+- [ ] NVIDIA driver installed (`nvidia-smi` shows GPU)
+- [ ] CUDA toolkit installed (`nvcc --version`)
+- [ ] Virtual environment activated
+- [ ] All dependencies installed via `pip install -r requirements.txt`
 - [ ] `torch.cuda.is_available()` returns `True`
 
 ### Per Module

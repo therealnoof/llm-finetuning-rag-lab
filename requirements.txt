@@ -1,39 +1,79 @@
 # F5 AI Technical Assistant Training Lab
-# Dependencies for Google Colab (T4 GPU) environment
+# Dependencies for local/AWS environments with NVIDIA GPU
+#
+# For AWS g4dn.4xlarge (T4 GPU) or similar CUDA-enabled systems
+# Install with: pip install -r requirements.txt
+#
+# For Google Colab users: Dependencies are installed within notebooks
 
-# Core ML frameworks
-torch>=2.4.0
-transformers==4.52.3
-accelerate>=1.12.0
+# =============================================================================
+# Core ML Frameworks
+# =============================================================================
+torch>=2.0.0
+transformers>=4.40.0
+accelerate>=0.30.0
+safetensors>=0.4.0
+sentencepiece>=0.2.0
 
-# Fine-tuning tools
-peft>=0.18.0
-bitsandbytes>=0.49.0
-trl>=0.24.0
+# =============================================================================
+# Quantization & Memory Optimization
+# =============================================================================
+bitsandbytes>=0.43.0
 
-# Unsloth for optimized training (Colab-specific)
-# Note: Use pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git" in Colab
-unsloth>=2025.12.6
+# =============================================================================
+# Fine-Tuning Stack
+# =============================================================================
+peft>=0.12.0
+trl>=0.9.0
 
-# RAG components
-langchain>=0.3.27
-langchain-community>=0.3.0
-langchain-huggingface>=0.1.0
-chromadb>=1.1.1
-sentence-transformers>=5.1.1
+# Unsloth for optimized training (2x speedup)
+# For CUDA 11.8: pip install unsloth
+# For CUDA 12.1+: pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
+unsloth>=2024.8
 
-# Data handling
-datasets>=3.0.0
+# =============================================================================
+# RAG Components
+# =============================================================================
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-huggingface>=0.0.3
+langchain-text-splitters>=0.2.0
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# =============================================================================
+# Data Handling
+# =============================================================================
+datasets>=2.20.0
 pandas>=2.0.0
+numpy>=1.24.0
+jsonlines>=4.0.0
 
+# =============================================================================
 # Visualization
+# =============================================================================
 matplotlib>=3.7.0
 seaborn>=0.12.0
 
-# Utilities
-tqdm>=4.65.0
-jsonlines>=4.0.0
-python-dotenv>=1.0.0
-
-# Jupyter support
+# =============================================================================
+# Jupyter & Notebook Support
+# =============================================================================
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+notebook>=7.0.0
 ipywidgets>=8.0.0
+ipykernel>=6.0.0
+
+# =============================================================================
+# Utilities
+# =============================================================================
+tqdm>=4.65.0
+python-dotenv>=1.0.0
+huggingface-hub>=0.23.0
+
+# =============================================================================
+# Optional: For development/testing
+# =============================================================================
+# pytest>=7.0.0
+# black>=23.0.0
+# flake8>=6.0.0
