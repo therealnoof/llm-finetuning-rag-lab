@@ -224,7 +224,7 @@ ssh -i your-key.pem ubuntu@<your-instance-public-ip>
 python3 --version
 
 # Install pip and venv
-sudo apt install -y python3-pip python3-venv python3-dev
+sudo apt install -y python3-pip python3-venv python3.10-venv python3-dev
 ```
 
 ### 6.3 Install System Dependencies
@@ -524,7 +524,7 @@ systemctl enable xrdp
 systemctl start xrdp
 
 echo "=== Installing Python dependencies ==="
-apt install -y python3-pip python3-venv python3-dev git curl wget
+apt install -y python3-pip python3-venv python3.10-venv python3-dev git curl wget
 
 echo "=== Setup complete! ==="
 echo "Please run: sudo passwd ubuntu"
