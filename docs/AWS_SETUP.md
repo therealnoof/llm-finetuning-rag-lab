@@ -278,14 +278,7 @@ pip install -r requirements.txt
 ### 7.5 Install Unsloth
 
 ```bash
-# First, ensure setuptools is up to date (prevents build errors)
-pip install --upgrade setuptools wheel
-
-# For CUDA 12.1+
-pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
-
-# If the above fails, try:
-# pip install unsloth
+pip install unsloth
 ```
 
 ### 7.6 Install Jupyter
@@ -465,7 +458,7 @@ python -m ipykernel install --user --name=llm-lab --display-name="LLM Training L
 ```bash
 # Reinstall Unsloth
 pip uninstall unsloth -y
-pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
+pip install unsloth
 ```
 
 ### bitsandbytes Errors
@@ -556,7 +549,7 @@ source venv/bin/activate
 pip install --upgrade pip setuptools wheel
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements.txt
-pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git" || pip install unsloth
+pip install unsloth
 pip install jupyterlab notebook
 python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
 
