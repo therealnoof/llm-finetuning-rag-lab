@@ -1,6 +1,6 @@
 # F5 AI Technical Assistant Training Lab
 
-A hands-on 2-3 hour training lab where students create an LLM-powered F5 technical assistant using RAG (Retrieval-Augmented Generation) and fine-tuning techniques. Transform a general-purpose model (TinyLlama-1.1B) into an F5 domain expert.
+A hands-on 2-hour training lab where students create an LLM-powered F5 technical assistant using RAG (Retrieval-Augmented Generation) and fine-tuning techniques. Transform a general-purpose model (TinyLlama-1.1B) into an F5 domain expert.
 
 ## Learning Objectives
 
@@ -38,7 +38,7 @@ See [TECHNOLOGY_STACK.md](docs/TECHNOLOGY_STACK.md) for detailed explanations of
 |--------|----------|-------------|
 | 01 - Setup & Base Model | 20 min | Environment setup, load model, baseline evaluation |
 | 02 - RAG System | 45 min | Build retrieval-augmented generation pipeline |
-| 03 - Fine-tuning with QLoRA | 60 min | Train model on F5-specific data |
+| 03 - Fine-tuning with QLoRA | 30 min | Train model on F5-specific data |
 | 04 - Comparison & Evaluation | 25 min | Compare approaches, visualize results |
 
 ## Quick Start
