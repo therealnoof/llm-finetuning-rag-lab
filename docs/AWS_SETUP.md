@@ -1,6 +1,21 @@
 # AWS Environment Setup Guide
 
-This guide covers setting up the F5 AI Technical Assistant Training Lab on an AWS g4dn.4xlarge instance.
+Complete installation guide for running the F5 AI Technical Assistant Training Lab on an AWS g4dn.4xlarge instance with Ubuntu Desktop and XRDP.
+
+---
+
+## Table of Contents
+- [Instance Specifications](#instance-specifications)
+- [Step 1: Launch EC2 Instance](#step-1-launch-ec2-instance)
+- [Step 2: Initial System Setup](#step-2-initial-system-setup)
+- [Step 3: Install NVIDIA Drivers](#step-3-install-nvidia-drivers)
+- [Step 4: Install Ubuntu Desktop](#step-4-install-ubuntu-desktop)
+- [Step 5: Install XRDP](#step-5-install-xrdp)
+- [Step 6: Install Python and Dependencies](#step-6-install-python-and-dependencies)
+- [Step 7: Clone and Setup the Lab](#step-7-clone-and-setup-the-lab)
+- [Step 8: Connect via Remote Desktop](#step-8-connect-via-remote-desktop)
+- [Step 9: Running the Lab](#step-9-running-the-lab)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -12,47 +27,221 @@ This guide covers setting up the F5 AI Technical Assistant Training Lab on an AW
 | GPU | 1x NVIDIA T4 (16GB VRAM) |
 | vCPUs | 16 |
 | RAM | 64GB |
-| Storage | Recommended 100GB+ EBS |
+| Storage | 100GB+ EBS (gp3 recommended) |
 | OS | Ubuntu 22.04 LTS |
 
----
-
-## Prerequisites
-
-Before running the lab, ensure your instance has:
-
-- [x] Ubuntu Desktop installed
-- [x] XRDP configured for remote access
-- [x] NVIDIA drivers installed
-- [x] CUDA toolkit installed
-- [x] Python 3.10+ installed
-- [x] Jupyter Notebook/Lab installed
+**Estimated Cost:** ~$1.20/hour (on-demand)
 
 ---
 
-## Verify GPU Setup
+## Step 1: Launch EC2 Instance
+
+### 1.1 Choose AMI
+- Go to EC2 Console → Launch Instance
+- Select: **Ubuntu Server 22.04 LTS (HVM), SSD Volume Type**
+- Architecture: **64-bit (x86)**
+
+### 1.2 Choose Instance Type
+- Select: **g4dn.4xlarge**
+
+### 1.3 Configure Storage
+- Root volume: **100 GB** (minimum)
+- Volume type: **gp3** (better performance)
+
+### 1.4 Configure Security Group
+Create or select a security group with these inbound rules:
+
+| Type | Port | Source | Description |
+|------|------|--------|-------------|
+| SSH | 22 | Your IP | SSH access |
+| RDP | 3389 | Your IP | Remote Desktop |
+| Custom TCP | 8888 | Your IP | Jupyter (optional) |
+
+### 1.5 Key Pair
+- Create or select an existing key pair
+- Download the .pem file (you'll need this to connect)
+
+### 1.6 Launch
+- Click **Launch Instance**
+- Wait for instance to reach **Running** state
+
+---
+
+## Step 2: Initial System Setup
+
+### 2.1 Connect via SSH
 
 ```bash
-# Check NVIDIA driver
-nvidia-smi
+# Make key file secure
+chmod 400 your-key.pem
 
-# Expected output should show:
-# - NVIDIA T4 GPU
-# - Driver Version: 535.x or higher
-# - CUDA Version: 12.x
+# Connect to instance
+ssh -i your-key.pem ubuntu@<your-instance-public-ip>
+```
 
-# Check CUDA
-nvcc --version
+### 2.2 Update System
 
-# Check Python
-python3 --version
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+### 2.3 Set Timezone (Optional)
+
+```bash
+sudo timedatectl set-timezone America/New_York
 ```
 
 ---
 
-## Installation Steps
+## Step 3: Install NVIDIA Drivers
 
-### 1. Clone the Repository
+### 3.1 Install NVIDIA Driver
+
+```bash
+# Install required packages
+sudo apt install -y linux-headers-$(uname -r) build-essential
+
+# Add NVIDIA driver repository
+sudo apt install -y nvidia-driver-535
+
+# Reboot to load the driver
+sudo reboot
+```
+
+### 3.2 Verify NVIDIA Driver (after reboot)
+
+```bash
+# Reconnect via SSH after reboot
+ssh -i your-key.pem ubuntu@<your-instance-public-ip>
+
+# Verify driver installation
+nvidia-smi
+```
+
+Expected output should show:
+- NVIDIA T4 GPU
+- Driver Version: 535.x
+- CUDA Version: 12.x
+
+### 3.3 Install CUDA Toolkit
+
+```bash
+# Install CUDA toolkit
+sudo apt install -y nvidia-cuda-toolkit
+
+# Verify CUDA
+nvcc --version
+```
+
+---
+
+## Step 4: Install Ubuntu Desktop
+
+### 4.1 Install Desktop Environment
+
+```bash
+# Install Ubuntu Desktop (minimal version for faster install)
+sudo apt install -y ubuntu-desktop-minimal
+
+# Or full desktop (more applications, larger download)
+# sudo apt install -y ubuntu-desktop
+```
+
+This takes 10-15 minutes to download and install.
+
+### 4.2 Set Default Target to Graphical
+
+```bash
+sudo systemctl set-default graphical.target
+```
+
+---
+
+## Step 5: Install XRDP
+
+### 5.1 Install XRDP Server
+
+```bash
+# Install XRDP
+sudo apt install -y xrdp
+
+# Add xrdp user to ssl-cert group
+sudo adduser xrdp ssl-cert
+
+# Enable and start XRDP service
+sudo systemctl enable xrdp
+sudo systemctl start xrdp
+```
+
+### 5.2 Configure XRDP for Ubuntu Desktop
+
+```bash
+# Configure XRDP to use the desktop session
+echo "gnome-session" > ~/.xsession
+chmod +x ~/.xsession
+
+# Fix potential black screen issues
+sudo sed -i 's/^#\?allowed_users=.*/allowed_users=anybody/' /etc/X11/Xwrapper.config 2>/dev/null || true
+```
+
+### 5.3 Set Password for Ubuntu User
+
+```bash
+# Set a password (required for RDP login)
+sudo passwd ubuntu
+```
+Enter a strong password when prompted.
+
+### 5.4 Configure Firewall (if enabled)
+
+```bash
+# Allow RDP through firewall
+sudo ufw allow 3389/tcp
+sudo ufw allow 22/tcp
+sudo ufw enable
+```
+
+### 5.5 Reboot
+
+```bash
+sudo reboot
+```
+
+---
+
+## Step 6: Install Python and Dependencies
+
+### 6.1 Reconnect via SSH
+
+```bash
+ssh -i your-key.pem ubuntu@<your-instance-public-ip>
+```
+
+### 6.2 Install Python 3.10+ and pip
+
+```bash
+# Python should already be installed, verify:
+python3 --version
+
+# Install pip and venv
+sudo apt install -y python3-pip python3-venv python3-dev
+```
+
+### 6.3 Install System Dependencies
+
+```bash
+# Install git and other utilities
+sudo apt install -y git curl wget
+
+# Install dependencies for some Python packages
+sudo apt install -y libsqlite3-dev libffi-dev
+```
+
+---
+
+## Step 7: Clone and Setup the Lab
+
+### 7.1 Clone the Repository
 
 ```bash
 cd ~
@@ -60,7 +249,7 @@ git clone https://github.com/therealnoof/llm-finetuning-rag-lab.git
 cd llm-finetuning-rag-lab
 ```
 
-### 2. Create Virtual Environment (Recommended)
+### 7.2 Create Virtual Environment
 
 ```bash
 # Create virtual environment
@@ -73,37 +262,35 @@ source venv/bin/activate
 pip install --upgrade pip
 ```
 
-### 3. Install PyTorch with CUDA Support
-
-First, install PyTorch matching your CUDA version:
+### 7.3 Install PyTorch with CUDA Support
 
 ```bash
-# For CUDA 12.1+ (recommended)
+# For CUDA 12.1+ (check with nvidia-smi)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# For CUDA 11.8
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### 4. Install All Dependencies
+### 7.4 Install All Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Install Unsloth (CUDA-specific)
+### 7.5 Install Unsloth
 
 ```bash
 # For CUDA 12.1+
 pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
-
-# For CUDA 11.8
-pip install "unsloth[cu118] @ git+https://github.com/unslothai/unsloth.git"
 ```
 
-### 6. Verify Installation
+### 7.6 Install Jupyter
 
-```python
+```bash
+pip install jupyterlab notebook
+```
+
+### 7.7 Verify Installation
+
+```bash
 python3 -c "
 import torch
 print(f'PyTorch version: {torch.__version__}')
@@ -121,180 +308,252 @@ CUDA version: 12.1
 GPU: Tesla T4
 ```
 
----
-
-## Running Jupyter Notebooks
-
-### Option 1: JupyterLab (Recommended)
-
-```bash
-# Activate virtual environment
-source ~/llm-finetuning-rag-lab/venv/bin/activate
-
-# Start JupyterLab
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
-
-# Access via browser at: http://<instance-ip>:8888
-```
-
-### Option 2: Jupyter Notebook Classic
-
-```bash
-jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser
-```
-
-### Option 3: Via Ubuntu Desktop (XRDP)
-
-1. Connect via RDP to your instance
-2. Open terminal
-3. Navigate to project and launch Jupyter:
-   ```bash
-   cd ~/llm-finetuning-rag-lab
-   source venv/bin/activate
-   jupyter lab
-   ```
-4. Browser opens automatically
-
----
-
-## Running the Lab Modules
-
-### Module 1: Setup and Base Model
-```bash
-# Open notebooks/01_Setup_and_Base_Model.ipynb
-# Skip the Colab-specific installation cells (they start with !pip install)
-# The dependencies are already installed via requirements.txt
-```
-
-### Module 2: RAG System
-```bash
-# Open notebooks/02_RAG_System.ipynb
-# Skip installation and git clone cells
-# Start from the imports
-```
-
-### Module 3: Fine-Tuning with QLoRA
-```bash
-# Open notebooks/03_FineTuning_QLoRA.ipynb
-# Skip installation cells
-# Training will be faster and more stable than Colab
-```
-
-### Module 4: Comparison and Evaluation
-```bash
-# Open notebooks/04_Comparison_Evaluation.ipynb
-# All visualizations will render in JupyterLab
-```
-
----
-
-## Key Differences from Google Colab
-
-| Aspect | Google Colab | AWS g4dn.4xlarge |
-|--------|--------------|------------------|
-| Session time | ~12 hours max, may disconnect | Unlimited (you control) |
-| GPU | T4 (shared) | T4 (dedicated) |
-| RAM | ~12GB | 64GB |
-| Storage | Temporary | Persistent EBS |
-| Dependencies | Install each session | Install once |
-| Cost | Free tier available | ~$1.20/hour |
-
-### Notebook Modifications for AWS
-
-The notebooks contain Colab-specific cells that you can skip:
-
-1. **Skip cells starting with:**
-   - `!pip install`
-   - `!git clone`
-   - `%cd llm-finetuning-rag-lab`
-
-2. **Path adjustments:**
-   - Colab paths: `/content/llm-finetuning-rag-lab/`
-   - AWS paths: `~/llm-finetuning-rag-lab/` or relative paths
-
-3. **No runtime restart needed:**
-   - Colab sometimes requires restart after installing packages
-   - AWS environment is stable after initial setup
-
----
-
-## Troubleshooting
-
-### CUDA Out of Memory
-
-```python
-# Clear GPU memory between runs
-import torch
-torch.cuda.empty_cache()
-
-# Or restart the kernel
-```
-
-### bitsandbytes Issues
-
-```bash
-# Reinstall with CUDA support
-pip uninstall bitsandbytes -y
-pip install bitsandbytes --no-cache-dir
-```
-
-### Unsloth Import Errors
-
-```bash
-# Ensure correct CUDA version
-pip uninstall unsloth -y
-pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
-```
-
-### Jupyter Kernel Not Found
+### 7.8 Register Jupyter Kernel
 
 ```bash
 # Register the virtual environment as a Jupyter kernel
 python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
 ```
 
-Then select "LLM Training Lab" kernel in Jupyter.
+---
+
+## Step 8: Connect via Remote Desktop
+
+### 8.1 Get Instance Public IP
+- Go to EC2 Console
+- Select your instance
+- Copy the **Public IPv4 address**
+
+### 8.2 Connect from Windows
+1. Open **Remote Desktop Connection** (mstsc.exe)
+2. Enter the instance public IP
+3. Click **Connect**
+4. Login with:
+   - Username: `ubuntu`
+   - Password: (the password you set in Step 5.3)
+
+### 8.3 Connect from macOS
+1. Install **Microsoft Remote Desktop** from App Store
+2. Add a new PC with the instance public IP
+3. Connect and login with ubuntu credentials
+
+### 8.4 Connect from Linux
+```bash
+# Install Remmina or another RDP client
+sudo apt install remmina remmina-plugin-rdp
+
+# Connect using Remmina GUI or:
+remmina -c rdp://ubuntu@<your-instance-ip>
+```
 
 ---
 
-## Recommended Workflow
+## Step 9: Running the Lab
 
-1. **Start instance** via AWS Console
-2. **Connect via RDP** to Ubuntu Desktop
-3. **Open terminal** and activate environment:
-   ```bash
-   cd ~/llm-finetuning-rag-lab
-   source venv/bin/activate
-   jupyter lab
-   ```
-4. **Run notebooks** in order (Module 1 → 2 → 3 → 4)
-5. **Stop instance** when done to save costs
+### 9.1 Open Terminal in Ubuntu Desktop
+- Click Activities (top left)
+- Search for "Terminal"
+- Open Terminal application
+
+### 9.2 Navigate and Activate Environment
+
+```bash
+cd ~/llm-finetuning-rag-lab
+source venv/bin/activate
+```
+
+### 9.3 Launch Jupyter Lab
+
+```bash
+jupyter lab
+```
+
+This will open Jupyter Lab in Firefox within the desktop session.
+
+### 9.4 Open the AWS Notebooks
+1. In Jupyter Lab, navigate to `notebooks/aws/`
+2. Open notebooks in order:
+   - `01_Setup_and_Base_Model.ipynb`
+   - `02_RAG_System.ipynb`
+   - `03_FineTuning_QLoRA.ipynb`
+   - `04_Comparison_Evaluation.ipynb`
+
+### 9.5 Select the Correct Kernel
+- When opening a notebook, select kernel: **LLM Training Lab**
+- Or go to Kernel → Change Kernel → LLM Training Lab
 
 ---
 
-## Security Notes
+## Quick Reference Commands
 
-- Keep security group restricted (don't expose Jupyter to 0.0.0.0/0)
-- Use SSH tunneling or XRDP for secure access
-- Don't commit AWS credentials to the repository
-- Consider using IAM roles instead of access keys
+```bash
+# Activate environment
+cd ~/llm-finetuning-rag-lab && source venv/bin/activate
+
+# Start Jupyter Lab
+jupyter lab
+
+# Check GPU status
+nvidia-smi
+
+# Check GPU memory
+watch -n 1 nvidia-smi
+
+# Clear GPU memory (if needed)
+python -c "import torch; torch.cuda.empty_cache()"
+```
 
 ---
 
-## Cost Optimization
+## Troubleshooting
+
+### XRDP Black Screen
+
+```bash
+# Reconnect via SSH and run:
+echo "gnome-session" > ~/.xsession
+sudo systemctl restart xrdp
+```
+
+### XRDP Connection Refused
+
+```bash
+# Check XRDP status
+sudo systemctl status xrdp
+
+# Restart XRDP
+sudo systemctl restart xrdp
+
+# Check if port 3389 is listening
+sudo netstat -tlnp | grep 3389
+```
+
+### NVIDIA Driver Not Found
+
+```bash
+# Reinstall NVIDIA driver
+sudo apt install --reinstall nvidia-driver-535
+sudo reboot
+```
+
+### CUDA Out of Memory
+
+```python
+# In Python/Jupyter:
+import torch
+torch.cuda.empty_cache()
+
+# Or restart the kernel
+```
+
+### Jupyter Kernel Not Found
+
+```bash
+# Re-register the kernel
+source ~/llm-finetuning-rag-lab/venv/bin/activate
+python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
+```
+
+### Unsloth Import Errors
+
+```bash
+# Reinstall Unsloth
+pip uninstall unsloth -y
+pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
+```
+
+### bitsandbytes Errors
+
+```bash
+# Reinstall bitsandbytes
+pip uninstall bitsandbytes -y
+pip install bitsandbytes --no-cache-dir
+```
+
+---
+
+## Stopping the Instance
+
+When you're done with the lab, **stop the instance** to avoid charges:
+
+1. Go to EC2 Console
+2. Select your instance
+3. Instance State → Stop Instance
+
+**Note:** Stopped instances still incur EBS storage charges (~$0.10/GB/month).
+
+To completely remove all charges, terminate the instance (this deletes all data).
+
+---
+
+## Cost Optimization Tips
 
 | Action | Savings |
 |--------|---------|
-| Stop instance when not in use | ~$1.20/hour |
-| Use spot instances for training | Up to 70% off |
+| Stop instance when not in use | ~$1.20/hour saved |
+| Use Spot instances | Up to 70% off (but may be interrupted) |
 | Reduce EBS volume size | ~$0.10/GB/month |
-| Use smaller instance for non-GPU work | Switch to t3.medium |
+| Use gp3 instead of gp2 | Better performance at same cost |
 
 ---
 
-## Additional Resources
+## Complete Installation Script
 
-- [AWS g4dn Instance Documentation](https://aws.amazon.com/ec2/instance-types/g4/)
-- [NVIDIA T4 Specifications](https://www.nvidia.com/en-us/data-center/tesla-t4/)
-- [PyTorch CUDA Installation](https://pytorch.org/get-started/locally/)
-- [Unsloth GitHub](https://github.com/unslothai/unsloth)
+For convenience, here's a script that automates most of the installation:
+
+```bash
+#!/bin/bash
+# Save as setup.sh and run with: sudo bash setup.sh
+
+set -e
+
+echo "=== Updating system ==="
+apt update && apt upgrade -y
+
+echo "=== Installing NVIDIA drivers ==="
+apt install -y linux-headers-$(uname -r) build-essential
+apt install -y nvidia-driver-535
+
+echo "=== Installing Ubuntu Desktop ==="
+apt install -y ubuntu-desktop-minimal
+systemctl set-default graphical.target
+
+echo "=== Installing XRDP ==="
+apt install -y xrdp
+adduser xrdp ssl-cert
+systemctl enable xrdp
+systemctl start xrdp
+
+echo "=== Installing Python dependencies ==="
+apt install -y python3-pip python3-venv python3-dev git curl wget
+
+echo "=== Setup complete! ==="
+echo "Please run: sudo passwd ubuntu"
+echo "Then reboot: sudo reboot"
+```
+
+After reboot, run as the ubuntu user:
+
+```bash
+#!/bin/bash
+# Save as setup_lab.sh and run with: bash setup_lab.sh
+
+set -e
+
+cd ~
+git clone https://github.com/therealnoof/llm-finetuning-rag-lab.git
+cd llm-finetuning-rag-lab
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install --upgrade pip
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+pip install "unsloth[cu121] @ git+https://github.com/unslothai/unsloth.git"
+pip install jupyterlab notebook
+python -m ipykernel install --user --name=llm-lab --display-name="LLM Training Lab"
+
+echo "=== Lab setup complete! ==="
+echo "Run: cd ~/llm-finetuning-rag-lab && source venv/bin/activate && jupyter lab"
+```
