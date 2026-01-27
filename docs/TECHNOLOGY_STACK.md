@@ -1,812 +1,493 @@
-# Technology Stack
+# LLM Fine-Tuning & RAG Lab
+## Comprehensive Technology Stack Documentation
 
-This document provides an overview of all technologies used in the F5 AI Technical Assistant Training Lab, explaining what each component does and why it was chosen.
+**F5 AI Technical Assistant Training Lab**
+
+Repository: [github.com/therealnoof/llm-finetuning-rag-lab](https://github.com/therealnoof/llm-finetuning-rag-lab)
+
+Version 1.1 | January 2026
 
 ---
 
 ## Table of Contents
-- [Overview](#overview)
-- [Base Model](#base-model)
-- [Quantization & Memory Optimization](#quantization--memory-optimization)
-- [Fine-Tuning Stack](#fine-tuning-stack)
-- [RAG Stack](#rag-stack)
-- [Core ML Infrastructure](#core-ml-infrastructure)
-- [Environment](#environment)
-- [Version Summary](#version-summary)
+
+1. [Executive Summary](#1-executive-summary)
+2. [Architecture Overview](#2-architecture-overview)
+3. [Core Technologies](#3-core-technologies)
+   - 3.1 [TinyLlama-1.1B-Chat](#31-tinyllama-11b-chat)
+   - 3.2 [Fine-Tuning Framework: Unsloth + QLoRA + PEFT](#32-fine-tuning-framework-unsloth--qlora--peft)
+   - 3.3 [LangChain - RAG Orchestration Framework](#33-langchain---rag-orchestration-framework)
+   - 3.4 [ChromaDB - Vector Database](#34-chromadb---vector-database)
+   - 3.5 [Embedding Model: all-MiniLM-L6-v2](#35-embedding-model-all-minilm-l6-v2)
+4. [Compute Environments](#4-compute-environments)
+   - 4.1 [Google Colab (Public Option)](#41-google-colab-public-option)
+   - 4.2 [AWS EC2 G4dn Instance (Private Option)](#42-aws-ec2-g4dn-instance-private-option)
+   - 4.3 [Environment Comparison](#43-environment-comparison)
+   - 4.4 [PyTorch & CUDA](#44-pytorch--cuda)
+   - 4.5 [Hugging Face Transformers](#45-hugging-face-transformers)
+5. [Data Architecture](#5-data-architecture)
+6. [Lab Module Breakdown](#6-lab-module-breakdown)
+7. [Glossary of Terms](#7-glossary-of-terms)
 
 ---
 
-## Overview
+## 1. Executive Summary
 
-This project demonstrates two approaches to creating a domain-specific AI assistant:
+This document provides a comprehensive overview of all technologies used in the LLM Fine-Tuning and RAG (Retrieval-Augmented Generation) Student Lab. The lab transforms a general-purpose language model (TinyLlama-1.1B) into an F5 domain expert through a combination of RAG and fine-tuning techniques.
 
-1. **RAG (Retrieval-Augmented Generation)**: Enhances a base model with external knowledge at inference time
-2. **Fine-Tuning with QLoRA**: Trains the model to internalize domain knowledge and terminology
+The lab supports two deployment options: Google Colab's free tier for public access, or a private AWS EC2 instance with T4 GPU for secure, controlled environments. Both options provide sufficient compute resources to complete the entire lab in approximately 2 hours.
 
-The tech stack was selected to run entirely on Google Colab's free tier (T4 GPU with 16GB VRAM).
+### Learning Objectives
 
----
+- Load and run quantized LLMs on limited hardware
+- Build a RAG system with LangChain and ChromaDB
+- Fine-tune models using QLoRA for domain specialization
+- Evaluate and compare different LLM enhancement approaches
 
-## Base Model
+### Technology Stack Summary
 
-### TinyLlama/TinyLlama-1.1B-Chat-v1.0
-| Attribute | Value |
-|-----------|-------|
-| Parameters | 1.1 billion |
-| Architecture | LLaMA-based decoder-only transformer |
-| Context Length | 2,048 tokens |
-| Training Data | 3 trillion tokens (SlimPajama, StarCoder) |
-| License | Apache 2.0 |
-
-**What it does**: TinyLlama is a compact large language model that provides strong performance relative to its size. The chat-tuned version has been instruction-fine-tuned for conversational use.
-
-**Why we use it**:
-- Small enough to fit in Colab's free T4 GPU memory (~2GB when 4-bit quantized)
-- Fast inference and training times for a workshop setting
-- Good baseline capabilities for demonstrating improvement via RAG/fine-tuning
-- Open license allows unrestricted use
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Base Model | TinyLlama-1.1B-Chat | Small LLM for text generation (2GB quantized) |
+| Fine-tuning | Unsloth + QLoRA + PEFT | Memory-efficient model adaptation |
+| RAG Framework | LangChain | Orchestrates retrieval and generation pipeline |
+| Vector Database | ChromaDB | Stores and searches document embeddings |
+| Embeddings | all-MiniLM-L6-v2 | Converts text to semantic vectors |
+| Environment (Public) | Google Colab (T4 GPU) | Free cloud computing platform |
+| Environment (Private) | AWS EC2 G4dn (T4 GPU) | Secure private cloud instance |
 
 ---
 
-## Prompting and Chat Templates
+## 2. Architecture Overview
 
-### How to Ask the Model Questions
+The lab architecture consists of interconnected layers that work together to create an intelligent F5 technical assistant.
 
-LLMs don't just take raw text - they expect a specific format called a **chat template**. This tells the model who is speaking (system, user, assistant) and when to respond.
+### System Layers
 
-#### TinyLlama Chat Format
+| Layer | Components | Data Flow |
+|-------|------------|-----------|
+| User Interface | Jupyter Notebooks | Receives user queries and displays responses |
+| Orchestration | LangChain | Routes queries, manages context, coordinates components |
+| Retrieval | ChromaDB + Embeddings | Finds relevant documents for context |
+| Generation | TinyLlama (base or fine-tuned) | Produces natural language responses |
+| Training | Unsloth + QLoRA | Adapts model to F5 domain (offline) |
 
-TinyLlama uses this specific format:
+### Data Flow Explanation
 
-```
-<|system|>
-You are a helpful assistant.</s>
-<|user|>
-What is SSL offloading?</s>
-<|assistant|>
-```
+When a user asks a question like "How do I configure load balancing on F5 BIG-IP?", the system processes it through several stages:
 
-| Token | Purpose |
-|-------|---------|
-| `<|system|>` | Marks the start of system instructions (sets behavior/persona) |
-| `<|user|>` | Marks the start of the user's message (your question) |
-| `<|assistant|>` | Marks where the model should start generating its response |
-| `</s>` | End-of-sequence token (marks end of each turn) |
-
-#### Basic Prompt Structure
-
-```python
-# Simple question to the model
-prompt = """<|system|>
-You are a helpful assistant.</s>
-<|user|>
-What is a virtual server in F5 BIG-IP?</s>
-<|assistant|>
-"""
-
-# The model generates text starting after <|assistant|>
-response = pipeline(prompt)[0]["generated_text"]
-```
-
-#### Why the Format Matters
-
-Without proper formatting, the model gets confused:
-
-```python
-# ❌ BAD - No chat template
-prompt = "What is SSL offloading?"
-# Model might continue the sentence randomly: "What is SSL offloading? It's a question..."
-
-# ✅ GOOD - Proper chat template
-prompt = """<|system|>
-You are a helpful assistant.</s>
-<|user|>
-What is SSL offloading?</s>
-<|assistant|>
-"""
-# Model understands it should ANSWER the question
-```
-
-#### Adding Context (for RAG)
-
-When using RAG, inject the retrieved context into the system or user message:
-
-```python
-# RAG prompt with context
-prompt = f"""<|system|>
-You are an F5 BIG-IP technical expert. Use the following context to answer the question accurately.
-
-Context:
-{retrieved_context}</s>
-<|user|>
-{user_question}</s>
-<|assistant|>
-"""
-```
-
-#### Different Prompt Patterns
-
-**1. Simple Q&A:**
-```python
-prompt = """<|system|>
-You are a helpful technical assistant.</s>
-<|user|>
-How do I check pool member status?</s>
-<|assistant|>
-"""
-```
-
-**2. With Persona/Role:**
-```python
-prompt = """<|system|>
-You are a senior F5 BIG-IP engineer with 10 years of experience.
-Provide detailed, actionable answers with TMSH commands when relevant.</s>
-<|user|>
-A pool member is showing offline. How do I troubleshoot?</s>
-<|assistant|>
-"""
-```
-
-**3. With Examples (Few-Shot):**
-```python
-prompt = """<|system|>
-You are an iRule expert. Write iRules based on the user's requirements.</s>
-<|user|>
-Write an iRule to log all HTTP requests.</s>
-<|assistant|>
-when HTTP_REQUEST {
-    log local0. "Request: [HTTP::method] [HTTP::uri]"
-}</s>
-<|user|>
-Write an iRule to redirect HTTP to HTTPS.</s>
-<|assistant|>
-"""
-```
-
-**4. Multi-Turn Conversation:**
-```python
-prompt = """<|system|>
-You are a helpful assistant.</s>
-<|user|>
-What is a virtual server?</s>
-<|assistant|>
-A virtual server is a traffic management object that receives client connections.</s>
-<|user|>
-How do I create one?</s>
-<|assistant|>
-"""
-```
-
-#### Using the Tokenizer's Chat Template
-
-Instead of manually formatting, you can use the tokenizer's built-in template:
-
-```python
-messages = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What is SSL offloading?"}
-]
-
-# Tokenizer formats it correctly for TinyLlama
-prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-```
-
-This automatically produces the correct `<|system|>`, `<|user|>`, `<|assistant|>` format.
-
-#### Generation Parameters
-
-Control how the model generates responses:
-
-```python
-pipeline = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    max_new_tokens=256,    # Maximum tokens to generate
-    temperature=0.7,       # Randomness (0=deterministic, 1=creative)
-    top_p=0.9,            # Nucleus sampling (consider top 90% probability tokens)
-    do_sample=True,       # Enable sampling (vs greedy decoding)
-    pad_token_id=tokenizer.eos_token_id  # Prevent padding warnings
-)
-```
-
-| Parameter | Effect |
-|-----------|--------|
-| `max_new_tokens` | Limits response length. 256 ≈ 1-2 paragraphs. |
-| `temperature` | Lower = focused/deterministic. Higher = creative/random. |
-| `top_p` | Filters unlikely tokens. 0.9 means ignore bottom 10% probability. |
-| `do_sample` | If False, always picks highest probability token (greedy). |
-
-#### Common Prompting Mistakes
-
-| Mistake | Problem | Fix |
-|---------|---------|-----|
-| Missing `</s>` after turns | Model doesn't know when turn ends | Add `</s>` after each message |
-| No `<|assistant|>` at end | Model doesn't know to start responding | Always end with `<|assistant|>\n` |
-| Wrong template for model | Different models use different formats | Use `tokenizer.apply_chat_template()` |
-| Prompt too long | Exceeds context limit (2048 tokens) | Summarize context or chunk |
+1. **Step 1 - Query Embedding**: The user's question is converted into a numerical vector using the all-MiniLM-L6-v2 model.
+2. **Step 2 - Document Retrieval**: ChromaDB searches its index to find the most semantically similar text chunks.
+3. **Step 3 - Prompt Construction**: LangChain combines the original question with the retrieved context.
+4. **Step 4 - Response Generation**: TinyLlama generates a response using the provided context.
+5. **Step 5 - Output**: The generated response is displayed to the user.
 
 ---
 
-## Quantization & Memory Optimization
+## 3. Core Technologies
 
-### BitsAndBytes
-| Component | Purpose |
-|-----------|---------|
-| `load_in_4bit` | Reduces model weights from 16-bit to 4-bit |
-| `nf4` quantization | Normalized float 4-bit format optimized for neural networks |
-| `double_quant` | Quantizes the quantization constants for additional savings |
+### 3.1 TinyLlama-1.1B-Chat
 
-**What it does**: BitsAndBytes enables loading and running large models in reduced precision, dramatically cutting memory requirements while maintaining most of the model's capabilities.
+TinyLlama is a compact open-source large language model with 1.1 billion parameters. Despite its small size compared to GPT-4, it demonstrates remarkable language understanding capabilities.
 
-**Why we use it**:
-- Reduces TinyLlama from ~4.4GB to ~2GB VRAM
-- Enables fine-tuning on consumer GPUs
-- Minimal quality degradation with NF4 quantization
+#### What is a Language Model?
 
-### Accelerate
-**What it does**: Hugging Face's library for distributed and mixed-precision training. Handles device placement, gradient accumulation, and multi-GPU setups automatically.
+A language model is AI that has learned patterns in human language by analyzing massive amounts of text. It can predict what words come next in a sentence and generate coherent, contextually appropriate text.
 
-**Why we use it**: Required by Transformers for efficient model loading with `device_map="auto"`.
+#### Technical Specifications
 
----
+| Specification | Value | What This Means |
+|---------------|-------|-----------------|
+| Parameters | 1.1 billion | Adjustable values learned during training. More = more capability but more memory. |
+| Architecture | Llama 2 Transformer | Same design as Meta's Llama models with attention mechanisms. |
+| Context Length | 2,048 tokens | Can process about 1,500 words at once. |
+| Quantized Size | ~2GB (4-bit) | Compressed to use less memory while maintaining capability. |
+| Training Data | 3 trillion tokens | Trained on diverse internet text including code and books. |
+| License | Apache 2.0 | Free for commercial and educational use. |
 
-## Fine-Tuning Stack
+#### How Transformers Work
 
-### PEFT (Parameter-Efficient Fine-Tuning)
-**What it does**: Instead of updating all model weights, PEFT methods add small trainable adapters while freezing the base model. This dramatically reduces:
-- Memory needed for training
-- Storage for saved models
-- Risk of catastrophic forgetting
+TinyLlama uses a Transformer architecture, which is the foundation of all modern language models including ChatGPT and Claude. Here's a simplified explanation:
 
-**Key concepts**:
-- **LoRA (Low-Rank Adaptation)**: Decomposes weight updates into low-rank matrices
-- **Adapter size**: Controlled by `r` (rank) parameter - higher = more capacity but more memory
+- **Tokenization**: Text is split into "tokens" (word pieces). Each token gets a number.
+- **Embeddings**: Each token number is converted to a vector capturing its meaning.
+- **Attention**: The model calculates how much each token should "pay attention" to every other token for context.
+- **Feed-Forward Networks**: Each position passes through neural network layers that transform the information.
+- **Layer Stacking**: TinyLlama has 22 layers. Early layers learn basic patterns, later layers learn abstract concepts.
+- **Output**: The final layer predicts probabilities for the next token.
 
-### QLoRA Configuration
-```python
-LoraConfig(
-    r=16,                    # Rank of update matrices
-    lora_alpha=16,           # Scaling factor
-    target_modules=[         # Which layers to adapt
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj"
-    ],
-    lora_dropout=0.05,       # Regularization
-    bias="none",             # Don't train biases
-    task_type="CAUSAL_LM"    # Decoder-only language model
-)
-```
+#### Why TinyLlama for This Lab?
 
-**Why we use it**: QLoRA combines 4-bit quantization with LoRA adapters, enabling fine-tuning of billion-parameter models on a single consumer GPU.
-
-### TRL (Transformer Reinforcement Learning)
-**What it does**: Hugging Face's library for training language models with various objectives including supervised fine-tuning (SFT), reinforcement learning from human feedback (RLHF), and direct preference optimization (DPO).
-
-**Component used**: `SFTTrainer` - Supervised Fine-Tuning Trainer
-
-**Why we use SFTTrainer**:
-- Handles chat template formatting automatically
-- Integrates seamlessly with PEFT/LoRA
-- Manages gradient accumulation and mixed precision
-- Provides training callbacks and logging
-
-### Unsloth
-**What it does**: Optimized kernels and training loops that accelerate fine-tuning by 2x while reducing memory usage by up to 60%.
-
-**Key optimizations**:
-- Custom CUDA kernels for attention and MLP layers
-- Fused operations to reduce memory bandwidth
-- Gradient checkpointing optimizations
-
-**Why we use it**: Makes training feasible within Colab's session time limits and memory constraints.
+- **Size**: Small enough for T4 GPU (16GB VRAM) while leaving room for fine-tuning
+- **Speed**: Generates responses quickly enough for interactive learning
+- **Quality**: Produces coherent responses despite its small size
+- **Trainability**: Can be fine-tuned with QLoRA in under 30 minutes
+- **Educational**: Same architecture as industry models, concepts transfer to larger systems
 
 ---
 
-## RAG Stack
+### 3.2 Fine-Tuning Framework: Unsloth + QLoRA + PEFT
 
-### LangChain
-**What it does**: Framework for building applications with LLMs. Provides abstractions for:
-- Document loading and processing
-- Text splitting and chunking
-- Vector store integration
-- Retrieval chains
+Fine-tuning is taking a pre-trained model and training it further on specific data. This lab uses three technologies together to make fine-tuning possible on limited hardware.
 
-**Components used**:
-| Component | Purpose |
-|-----------|---------|
-| `DirectoryLoader` | Load all .txt files from a directory |
-| `TextLoader` | Parse plain text files |
-| `RecursiveCharacterTextSplitter` | Split documents into overlapping chunks |
+#### What is Fine-Tuning?
 
-**Why we use it**: Industry-standard framework with extensive documentation and integrations.
+Imagine TinyLlama as someone with a general education. Fine-tuning is like sending them to specialized training for F5 technologies. After fine-tuning, the model uses F5 terminology naturally and provides more accurate responses.
 
-### ChromaDB
-**What it does**: Open-source vector database that stores embeddings and enables similarity search. Runs entirely in-memory or persisted to disk.
+#### QLoRA (Quantized Low-Rank Adaptation)
 
-**Key features**:
-- No external server required (embedded mode)
-- Automatic embedding management
-- Metadata filtering
-- Multiple distance metrics (cosine, L2, IP)
+QLoRA is a breakthrough technique that makes fine-tuning accessible:
 
-**Why we use it**:
-- Zero configuration - works out of the box
-- No API keys or external services needed
-- Fast enough for demo/workshop purposes
-- Persists to disk for reuse across sessions
+- **Quantization**: The base model is compressed to 4-bit precision, reducing memory by 8x.
+- **Low-Rank Adaptation (LoRA)**: Instead of updating all 1.1B parameters, LoRA adds small adapter matrices (4-8M parameters) that learn the new task. Original weights stay frozen.
+- **Memory Savings**: QLoRA allows training with under 8GB VRAM instead of 50+ GB.
 
-### Sentence-Transformers
-**What it does**: Library for computing dense vector embeddings of text using transformer models. These embeddings capture semantic meaning, enabling similarity search.
+#### How LoRA Works
 
-**Model used**: `all-MiniLM-L6-v2`
-| Attribute | Value |
-|-----------|-------|
-| Dimensions | 384 |
-| Max Sequence | 256 tokens |
-| Size | ~80MB |
-| Speed | Very fast |
+Traditional fine-tuning updates a 4096x4096 weight matrix (16.7M values). LoRA approximates changes with two smaller matrices:
 
-**Why we use it**:
-- Free and runs locally (no API costs)
-- Good balance of quality and speed
-- Small enough to load alongside the LLM
-- Well-suited for technical documentation retrieval
+- **Matrix A**: 4096 x 8 = 32,768 values
+- **Matrix B**: 8 x 4096 = 32,768 values
+- **Total**: 65,536 values instead of 16.7 million (0.4% of original!)
 
-### RAG Pipeline Flow
+During inference, the LoRA adapter adds its contribution: `Output = W*x + (A*B)*x`. The original weights W never change, so you can easily swap different LoRA adapters for different tasks.
 
-The RAG pipeline has two phases: **indexing** (one-time setup) and **retrieval** (every query).
+#### PEFT (Parameter-Efficient Fine-Tuning)
 
-#### Phase 1: Indexing (One-Time Setup)
+PEFT is Hugging Face's library implementing LoRA and other efficient fine-tuning methods, providing easy integration and adapter management.
 
-Before we can answer questions, we must prepare our knowledge base:
+#### Unsloth
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     INDEXING PHASE                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   F5 Documentation Files                                         │
-│   ┌──────────────┐ ┌──────────────┐ ┌──────────────┐            │
-│   │ ssl_offload  │ │ irules_guide │ │ load_balance │  ...       │
-│   │    .txt      │ │    .txt      │ │    .txt      │            │
-│   └──────┬───────┘ └──────┬───────┘ └──────┬───────┘            │
-│          │                │                │                     │
-│          └────────────────┼────────────────┘                     │
-│                           ▼                                      │
-│                  ┌─────────────────┐                             │
-│                  │  Text Splitter  │                             │
-│                  │  (500 chars,    │                             │
-│                  │   50 overlap)   │                             │
-│                  └────────┬────────┘                             │
-│                           │                                      │
-│          Why? Documents are too long for LLM context.            │
-│          We split into chunks that fit and overlap               │
-│          to preserve context at boundaries.                      │
-│                           │                                      │
-│                           ▼                                      │
-│          ┌────────────────────────────────┐                      │
-│          │  Chunks (e.g., 45 total)       │                      │
-│          │  "To configure SSL offload..." │                      │
-│          │  "Create a Client SSL prof..." │                      │
-│          │  "iRules use TCL syntax..."    │                      │
-│          └────────────────┬───────────────┘                      │
-│                           │                                      │
-│                           ▼                                      │
-│                  ┌─────────────────┐                             │
-│                  │ Embedding Model │                             │
-│                  │ (all-MiniLM-L6) │                             │
-│                  └────────┬────────┘                             │
-│                           │                                      │
-│          Why? Computers can't understand text directly.          │
-│          Embeddings convert text → numbers (vectors)             │
-│          where similar meanings = similar numbers.               │
-│                           │                                      │
-│                           ▼                                      │
-│          ┌────────────────────────────────┐                      │
-│          │  Vectors (384 dimensions each) │                      │
-│          │  [0.23, -0.45, 0.12, ...]      │                      │
-│          │  [0.67, -0.21, 0.89, ...]      │                      │
-│          │  [-0.15, 0.33, 0.44, ...]      │                      │
-│          └────────────────┬───────────────┘                      │
-│                           │                                      │
-│                           ▼                                      │
-│                  ┌─────────────────┐                             │
-│                  │    ChromaDB     │                             │
-│                  │  (Vector Store) │                             │
-│                  └─────────────────┘                             │
-│                                                                  │
-│          ChromaDB stores vectors + original text.                │
-│          Think of it as a searchable index where                 │
-│          "search" means "find similar vectors."                  │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+Unsloth makes fine-tuning 2x faster and uses 60% less memory through custom CUDA kernels and efficient memory management.
 
-#### Phase 2: Retrieval (Every Query)
+#### Fine-Tuning Configuration
 
-When a user asks a question:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     RETRIEVAL PHASE                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   User Question: "How do I configure SSL offloading?"           │
-│                           │                                      │
-│                           ▼                                      │
-│            ┌───────────────────────────┐                         │
-│            │     Embedding Model       │                         │
-│            │     (all-MiniLM-L6)       │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│       Why embed the question? To search ChromaDB, we need        │
-│       to compare vectors. The question must become a vector      │
-│       so we can find chunks with similar vectors.                │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │   Question Vector         │                         │
-│            │   [0.25, -0.42, 0.15...]  │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │       ChromaDB           │                         │
-│            │   Similarity Search       │                         │
-│            │   (cosine distance)       │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│       How it works: ChromaDB compares the question vector        │
-│       against ALL stored chunk vectors using cosine similarity.  │
-│       Vectors pointing in similar directions = similar meaning.  │
-│                          │                                       │
-│       Example distances:                                         │
-│       • "SSL offloading steps..." → 0.15 (very similar!)        │
-│       • "Create Client SSL..."    → 0.22 (similar)              │
-│       • "Round Robin algorithm"   → 0.89 (not similar)          │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │   Top-K Results (k=3)     │                         │
-│            │                           │                         │
-│            │   1. "To configure SSL    │                         │
-│            │      offloading, first    │                         │
-│            │      import your cert..." │                         │
-│            │                           │                         │
-│            │   2. "Create a Client     │                         │
-│            │      SSL profile under    │                         │
-│            │      Local Traffic..."    │                         │
-│            │                           │                         │
-│            │   3. "Attach the SSL      │                         │
-│            │      profile to your      │                         │
-│            │      virtual server..."   │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│       We retrieve the original TEXT (not vectors) of the        │
-│       most similar chunks. These become our context.             │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │    Prompt Construction    │                         │
-│            │                           │                         │
-│            │  "You are an F5 expert.   │                         │
-│            │   Use this context:       │                         │
-│            │                           │                         │
-│            │   [Retrieved chunks...]   │                         │
-│            │                           │                         │
-│            │   Question: How do I      │                         │
-│            │   configure SSL...?"      │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│       Why inject context? The LLM doesn't "know" F5 docs.        │
-│       By putting relevant text in the prompt, we give it         │
-│       the information needed to answer accurately.               │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │       TinyLlama LLM       │                         │
-│            │    (generates response)   │                         │
-│            └─────────────┬─────────────┘                         │
-│                          │                                       │
-│       The LLM reads the context and question, then generates     │
-│       an answer. It's essentially "open-book" - the model        │
-│       synthesizes an answer FROM the provided context.           │
-│                          │                                       │
-│                          ▼                                       │
-│            ┌───────────────────────────┐                         │
-│            │   Generated Response      │                         │
-│            │                           │                         │
-│            │   "To configure SSL       │                         │
-│            │    offloading on BIG-IP:  │                         │
-│            │    1. Import your SSL     │                         │
-│            │       certificate...      │                         │
-│            │    2. Create a Client     │                         │
-│            │       SSL profile..."     │                         │
-│            └───────────────────────────┘                         │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### Why This Architecture?
-
-| Problem | Solution |
-|---------|----------|
-| LLMs have knowledge cutoffs and gaps | RAG injects current/domain knowledge at query time |
-| Can't search text by meaning with keywords | Embeddings enable semantic search ("SSL setup" finds "certificate configuration") |
-| Full documents don't fit in LLM context | Chunking + retrieval finds just the relevant parts |
-| LLMs can hallucinate facts | Grounding in retrieved documents improves accuracy |
-| Updating LLM knowledge requires retraining | Just update the document store - no retraining needed |
-
-#### Key Insight: Two Different Models
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│   EMBEDDING MODEL                    LLM (TinyLlama)            │
-│   (all-MiniLM-L6-v2)                                            │
-│                                                                  │
-│   Purpose: Convert text → vectors    Purpose: Generate text     │
-│                                                                  │
-│   Input:  "SSL offloading"           Input:  Full prompt with   │
-│   Output: [0.23, -0.45, ...]                 context + question │
-│           (384 numbers)              Output: Natural language   │
-│                                              answer              │
-│                                                                  │
-│   Used for: SEARCHING                Used for: ANSWERING        │
-│   (finding relevant docs)            (generating response)      │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The embedding model and LLM serve completely different purposes. The embedding model is small and fast (80MB) - optimized for creating searchable representations. The LLM is larger (2GB quantized) - optimized for understanding and generating language.
+| Parameter | Value | Explanation |
+|-----------|-------|-------------|
+| LoRA Rank (r) | 16 | Size of adapter matrices. Higher = more capacity but more memory. |
+| LoRA Alpha | 32 | Scaling factor. Usually 2x the rank. |
+| Target Modules | q_proj, k_proj, v_proj, o_proj | Which attention layers get LoRA adapters. |
+| Learning Rate | 2e-4 | How fast the model learns. |
+| Batch Size | 4 | Examples processed together. |
+| Gradient Accumulation | 4 | Simulates batch size of 16 to stabilize training. |
+| Epochs | 1 | Times through the training data. |
+| Training Examples | 150+ | Question-answer pairs about F5 technologies. |
 
 ---
 
-## Core ML Infrastructure
+### 3.3 LangChain - RAG Orchestration Framework
 
-### PyTorch
-**What it does**: Deep learning framework providing tensors, automatic differentiation, and GPU acceleration. The foundation for all model operations.
+LangChain is the industry-standard framework for building LLM-powered applications. It provides the "plumbing" connecting different AI components together.
 
-**Why we use it**: Industry standard, required by Transformers and all other ML libraries in the stack.
+#### What Problem Does LangChain Solve?
 
-### Transformers (Hugging Face)
-**What it does**: Library providing pre-trained models, tokenizers, and training utilities for NLP tasks.
+Building an AI application involves many steps: loading documents, splitting text, creating embeddings, storing vectors, retrieving context, constructing prompts, calling the LLM. LangChain provides pre-built, tested components for each step.
 
-**Components used**:
-| Component | Purpose |
-|-----------|---------|
-| `AutoModelForCausalLM` | Load decoder-only language models |
-| `AutoTokenizer` | Load model-specific tokenizers |
-| `BitsAndBytesConfig` | Configure quantization settings |
-| `pipeline` | High-level inference API |
-| `TrainingArguments` | Configure training hyperparameters |
+#### Key LangChain Components
 
-**Why we use it**: Central hub for accessing models and standardized training loops.
+| Component | Class/Module | What It Does |
+|-----------|--------------|--------------|
+| Document Loaders | TextLoader, DirectoryLoader | Reads files into Document objects. |
+| Text Splitters | RecursiveCharacterTextSplitter | Breaks documents into smaller chunks. |
+| Embeddings | HuggingFaceEmbeddings | Integrates sentence-transformers for vectors. |
+| Vector Stores | Chroma | Interface to ChromaDB for storing/searching. |
+| Retrievers | VectorStoreRetriever | Finds relevant documents for a query. |
+| Chains | RetrievalQA | Combines retriever + LLM into a pipeline. |
+| Prompts | PromptTemplate | Formats context and question for the LLM. |
 
-### Tokenizer
+#### The RAG Pipeline in Detail
 
-**What it does**: A tokenizer converts human-readable text into numbers (token IDs) that the model can process, and converts the model's output back into text.
-
-#### Why Tokenizers Are Necessary
-
-Neural networks only understand numbers, not text. The tokenizer is the translator between human language and the model's numeric world:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     TOKENIZATION PROCESS                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   Input Text: "Configure SSL offloading"                        │
-│                          │                                       │
-│                          ▼                                       │
-│                    ┌───────────┐                                 │
-│                    │ Tokenizer │                                 │
-│                    └─────┬─────┘                                 │
-│                          │                                       │
-│                          ▼                                       │
-│   Step 1: Split into subwords (tokens)                          │
-│                                                                  │
-│   "Configure" → ["Con", "fig", "ure"]                           │
-│   "SSL"       → ["SS", "L"]                                     │
-│   "offloading"→ ["off", "load", "ing"]                          │
-│                                                                  │
-│   Why subwords? The model can't store every possible word.      │
-│   Instead, it learns ~32,000 common subwords and combines       │
-│   them. This handles new/rare words like "BIG-IP" or "iRule".   │
-│                          │                                       │
-│                          ▼                                       │
-│   Step 2: Convert to token IDs (numbers)                        │
-│                                                                  │
-│   ["Con", "fig", "ure", "SS", "L", "off", "load", "ing"]        │
-│              ↓                                                   │
-│   [1128, 2500, 545, 5765, 43, 1283, 2613, 292]                  │
-│                                                                  │
-│   Each subword maps to a unique ID in the vocabulary.           │
-│   These IDs are what the neural network actually processes.     │
-│                          │                                       │
-│                          ▼                                       │
-│   ┌─────────────────────────────────────────┐                   │
-│   │           TinyLlama Model               │                   │
-│   │   (processes token IDs, outputs new IDs)│                   │
-│   └─────────────────────────────────────────┘                   │
-│                          │                                       │
-│                          ▼                                       │
-│   Step 3: Decode output IDs back to text                        │
-│                                                                  │
-│   [1762, 2891, 445, ...] → "To configure SSL offloading..."    │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### Key Tokenizer Concepts
-
-| Concept | Explanation |
-|---------|-------------|
-| **Vocabulary** | Fixed set of ~32,000 tokens the model knows. TinyLlama uses the LLaMA tokenizer vocabulary. |
-| **Subword tokenization** | Words are split into pieces. "unhappiness" → ["un", "happiness"] or ["un", "hap", "pi", "ness"] |
-| **Special tokens** | Control tokens like `<s>` (start), `</s>` (end), `<pad>` (padding). Used for formatting. |
-| **Token IDs** | Integer indices into the vocabulary. "hello" might be token ID 12345. |
-| **Encoding** | Text → token IDs (what we send to the model) |
-| **Decoding** | Token IDs → text (what we show to users) |
-
-#### Why Each Model Needs Its Own Tokenizer
-
-Different models use different vocabularies and tokenization algorithms:
-
-```python
-# TinyLlama tokenizer
-tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-
-# Same text, different tokenization per model:
-# GPT-2:     "Hello" → [15496]           (1 token)
-# LLaMA:     "Hello" → [10994]           (1 token, different ID)
-# BERT:      "Hello" → [7592]            (1 token, different ID)
-```
-
-The model's weights are trained expecting specific token IDs. Using the wrong tokenizer would be like speaking French to someone who only understands Japanese - the IDs would map to wrong meanings.
-
-#### Context Length and Token Counting
-
-Models have maximum context lengths measured in **tokens, not characters**:
-
-```
-TinyLlama context limit: 2,048 tokens
-
-Example token counts:
-• "Hello"                           →  1 token
-• "SSL offloading configuration"    →  4 tokens
-• A typical paragraph (100 words)   → ~130 tokens
-• This entire documentation file    → ~3,500 tokens (too long!)
-```
-
-This is why RAG chunks documents - we need retrieved context + question + response to fit within the token limit.
-
-#### Tokenizer in Our Code
-
-```python
-# Load the tokenizer that matches our model
-tokenizer = AutoTokenizer.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-
-# Set padding token (required for batch processing)
-tokenizer.pad_token = tokenizer.eos_token
-
-# Encoding: text → tokens
-input_ids = tokenizer.encode("What is SSL offloading?")
-# Result: [1, 1724, 338, 17122, 1283, 13789, 29973]
-
-# Decoding: tokens → text
-text = tokenizer.decode([1, 1724, 338, 17122, 1283, 13789, 29973])
-# Result: "<s> What is SSL offloading?"
-
-# The pipeline handles this automatically:
-pipeline("text-generation", model=model, tokenizer=tokenizer)
-```
-
-### Datasets (Hugging Face)
-**What it does**: Library for loading, processing, and sharing datasets. Provides memory-efficient data handling via Apache Arrow.
-
-**Why we use it**: Efficient loading of JSONL training data with automatic batching.
+1. **Document Loading**: TextLoader reads F5 documentation files from `data/f5_docs/`
+2. **Text Splitting**: RecursiveCharacterTextSplitter divides documents into ~500 character chunks with overlap.
+3. **Embedding Generation**: Each chunk passes through all-MiniLM-L6-v2 to create a 384-dim vector.
+4. **Vector Storage**: ChromaDB stores each chunk's text alongside its vector.
+5. **Query Processing**: User questions are embedded with the same model.
+6. **Similarity Search**: ChromaDB finds the 4 most similar chunks using cosine similarity.
+7. **Prompt Assembly**: LangChain formats a prompt with retrieved chunks as context.
+8. **LLM Generation**: TinyLlama generates a response using the context.
 
 ---
 
-## Environment
+### 3.4 ChromaDB - Vector Database
 
-### Google Colab
-**What it does**: Free cloud-based Jupyter notebook environment with GPU access.
+ChromaDB is an open-source embedding database designed for AI applications. It stores, indexes, and searches vector embeddings.
 
-**Resources (Free Tier)**:
-| Resource | Specification |
-|----------|---------------|
-| GPU | NVIDIA T4 (16GB VRAM) |
-| RAM | ~12GB system memory |
-| Disk | ~100GB temporary storage |
-| Session | Up to 12 hours (may disconnect earlier) |
+#### What is a Vector Database?
 
-**Why we use it**:
-- Free GPU access for all students
-- No local setup required
-- Pre-installed CUDA drivers
-- Easy notebook sharing
+Traditional databases search by exact matches. Vector databases search by similarity: find documents semantically similar to a query, even if they share no words in common. This is crucial for RAG.
 
-### NVIDIA T4 GPU
-**What it does**: Data center GPU optimized for inference and light training workloads.
+#### How Vector Search Works
 
-**Specifications**:
-| Spec | Value |
-|------|-------|
-| CUDA Cores | 2,560 |
-| Tensor Cores | 320 |
-| Memory | 16GB GDDR6 |
-| FP16 Performance | 65 TFLOPS |
+- **Embedding**: Each document is converted to a vector. Similar texts have similar vectors.
+- **Indexing**: ChromaDB builds an index (HNSW) for fast approximate nearest neighbor search.
+- **Query**: The query is embedded and the index finds the K closest vectors.
+- **Similarity Metric**: Distance is measured by cosine similarity - smaller angle = more similar.
 
-**Why it works for this lab**:
-- 16GB VRAM sufficient for 4-bit quantized TinyLlama + training
-- Tensor cores accelerate mixed-precision training
-- Available free on Colab
+#### ChromaDB Features
+
+| Feature | Usage | Explanation |
+|---------|-------|-------------|
+| Local Storage | Persist to ./chroma_db | Data saved to disk, survives restarts |
+| Collection | f5_docs | Named group of embeddings, like a table |
+| Embedding Function | all-MiniLM-L6-v2 | Automatically embeds text when adding/querying |
+| Metadata | source, chunk_id | Extra info stored with each embedding |
+| Similarity Search | query(query_texts, n_results) | Find top N similar documents |
+
+#### Why ChromaDB?
+
+- **No API Keys**: Runs entirely locally, no signup required
+- **Zero Configuration**: Works out of the box with sensible defaults
+- **Python Native**: Designed for Python-first workflows like Jupyter notebooks
+- **LangChain Integration**: First-class support in LangChain ecosystem
 
 ---
 
-## Version Summary
+### 3.5 Embedding Model: all-MiniLM-L6-v2
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `torch` | ≥2.0.0 | Deep learning framework |
-| `transformers` | 4.44.0 | Model loading and training |
-| `accelerate` | ≥0.33.0 | Distributed training utilities |
-| `peft` | ≥0.12.0 | Parameter-efficient fine-tuning |
-| `bitsandbytes` | ≥0.43.0 | Quantization |
-| `trl` | ≥0.9.0 | SFTTrainer |
-| `unsloth` | ≥2024.8 | Training acceleration |
-| `langchain` | ≥0.2.0 | RAG framework |
-| `langchain-community` | ≥0.2.0 | Document loaders |
-| `langchain-huggingface` | ≥0.0.3 | HuggingFace integrations |
-| `chromadb` | ≥0.5.0 | Vector database |
-| `sentence-transformers` | ≥3.0.0 | Embedding model |
-| `datasets` | ≥2.20.0 | Data loading |
+This sentence-transformers model converts text into 384-dimensional vectors capturing semantic meaning. It translates human language into mathematical space where similarity can be computed.
+
+#### What Are Embeddings?
+
+An embedding is a list of numbers representing text where similar texts have similar numbers:
+
+- "The cat sat on the mat" → [0.12, -0.45, 0.78, ...] (384 numbers)
+- "A feline rested on a rug" → [0.11, -0.44, 0.77, ...] (similar vector!)
+- "Load balancing distributes traffic" → [-0.56, 0.23, 0.91, ...] (very different)
+
+#### Model Specifications
+
+| Specification | Value | Significance |
+|---------------|-------|--------------|
+| Model Name | sentence-transformers/all-MiniLM-L6-v2 | Full Hugging Face identifier |
+| Dimensions | 384 | Output vector length. Smaller than many models for efficiency. |
+| Max Tokens | 256 | Maximum input length. |
+| Model Size | ~80MB | Small enough to load quickly |
+| Speed | ~2800 sentences/second on GPU | Fast for real-time applications |
+| License | Apache 2.0 | Free for all uses |
 
 ---
 
-## Architecture Diagram
+## 4. Compute Environments
 
+The lab supports two deployment options to accommodate different organizational requirements: Google Colab for public/educational use, and AWS EC2 for private/enterprise environments.
+
+### 4.1 Google Colab (Public Option)
+
+Google Colaboratory is a free cloud-based Jupyter notebook environment providing GPU access. Ideal for public training sessions and self-paced learning.
+
+#### Colab Advantages
+
+- **Free GPU Access**: T4 GPU with 16GB VRAM at no cost
+- **Zero Setup**: No local installation required, works in any browser
+- **Easy Sharing**: Distribute lab materials via simple Colab links
+- **Pre-installed Libraries**: Most ML libraries available or easily added
+
+#### Colab Specifications
+
+| Resource | Free Tier | Notes |
+|----------|-----------|-------|
+| GPU | Tesla T4 (16GB VRAM) | Enable: Runtime > Change runtime type > T4 GPU |
+| RAM | ~12.7 GB | Sufficient for this lab |
+| Disk | ~78 GB | Ephemeral - cleared when disconnected |
+| Session Length | ~12 hours max | Disconnects after idle timeout |
+| Network | Public internet | Requires Google account |
+
+#### Colab Limitations
+
+- **Session Persistence**: Runtime disconnects after idle period; work may be lost
+- **Data Privacy**: Code and data processed on Google infrastructure
+- **Network Restrictions**: Cannot access private/internal resources
+- **Resource Availability**: GPU availability not guaranteed during peak times
+
+---
+
+### 4.2 AWS EC2 G4dn Instance (Private Option)
+
+For organizations requiring data privacy, network isolation, or consistent resource availability, the lab can be deployed on AWS EC2 G4dn instances featuring NVIDIA T4 GPUs.
+
+#### Why AWS for Private Deployments?
+
+- **Data Sovereignty**: All data remains within your AWS account and chosen region
+- **Network Isolation**: Deploy in private VPC with no public internet exposure
+- **Consistent Availability**: Dedicated GPU resources, no contention with other users
+- **Integration**: Connect to internal data sources, Active Directory, and corporate systems
+- **Compliance**: Meet regulatory requirements (FedRAMP, HIPAA, etc.) with appropriate configurations
+
+#### Recommended Instance Type
+
+| Specification | g4dn.xlarge | Notes |
+|---------------|-------------|-------|
+| GPU | 1x NVIDIA T4 (16GB VRAM) | Same GPU as Colab free tier |
+| vCPUs | 4 | Intel Cascade Lake |
+| RAM | 16 GB | More than Colab |
+| Storage | 125 GB NVMe SSD | Persistent, fast local storage |
+| Network | Up to 25 Gbps | High bandwidth for data transfer |
+| On-Demand Price | ~$0.526/hour | US East region, subject to change |
+| Spot Price | ~$0.16-0.20/hour | Up to 70% savings, may be interrupted |
+
+#### AWS Environment Setup
+
+The following components are required for the AWS deployment:
+
+- **EC2 Instance**: g4dn.xlarge (or g4dn.2xlarge for larger classes)
+- **AMI**: Deep Learning AMI (Ubuntu) - pre-installed NVIDIA drivers and CUDA
+- **Storage**: 100+ GB EBS volume for model weights and datasets
+- **Security Group**: Allow SSH (22) and Jupyter (8888) from authorized IPs only
+- **IAM Role**: Optional - for S3 access to training data
+
+#### AWS Deep Learning AMI
+
+AWS provides pre-configured Deep Learning AMIs that include all necessary drivers and frameworks:
+
+- **NVIDIA Driver**: Pre-installed and configured for T4 GPU
+- **CUDA Toolkit**: Version 11.x or 12.x depending on AMI version
+- **PyTorch**: Pre-installed with GPU support
+- **Conda Environments**: Isolated Python environments for different frameworks
+- **JupyterLab**: Pre-configured for remote notebook access
+
+#### Connecting to AWS Instance
+
+Students access the lab environment via SSH tunnel to JupyterLab:
+
+```bash
+# 1. Connect via SSH
+ssh -i key.pem -L 8888:localhost:8888 ubuntu@<instance-ip>
+
+# 2. Activate environment
+conda activate pytorch
+
+# 3. Start Jupyter
+jupyter lab --no-browser --port=8888
+
+# 4. Open browser: Navigate to http://localhost:8888
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Google Colab (T4 GPU)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    TinyLlama 1.1B                        │    │
-│  │              (4-bit quantized via BitsAndBytes)          │    │
-│  └─────────────────────────────────────────────────────────┘    │
-│           │                                    │                 │
-│           ▼                                    ▼                 │
-│  ┌─────────────────────┐            ┌─────────────────────┐     │
-│  │    Fine-Tuning      │            │        RAG          │     │
-│  │  ┌───────────────┐  │            │  ┌───────────────┐  │     │
-│  │  │   Unsloth     │  │            │  │  LangChain    │  │     │
-│  │  │   + QLoRA     │  │            │  │  + ChromaDB   │  │     │
-│  │  │   + PEFT      │  │            │  │  + MiniLM     │  │     │
-│  │  │   + TRL       │  │            │  └───────────────┘  │     │
-│  │  └───────────────┘  │            └─────────────────────┘     │
-│  └─────────────────────┘                                        │
-│           │                                    │                 │
-│           ▼                                    ▼                 │
-│  ┌─────────────────────┐            ┌─────────────────────┐     │
-│  │   LoRA Adapter      │            │   Vector Store      │     │
-│  │   (~20MB saved)     │            │   (F5 docs indexed) │     │
-│  └─────────────────────┘            └─────────────────────┘     │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+#### Cost Optimization Strategies
+
+- **Spot Instances**: Use for non-critical training; 60-70% cost savings
+- **Instance Scheduling**: Stop instances outside lab hours
+- **Right-sizing**: g4dn.xlarge sufficient for individual use; g4dn.2xlarge for shared access
+- **Reserved Instances**: Consider for recurring training programs (up to 40% savings)
 
 ---
 
-## Further Reading
+### 4.3 Environment Comparison
 
-- [TinyLlama Paper](https://arxiv.org/abs/2401.02385)
-- [QLoRA Paper](https://arxiv.org/abs/2305.14314)
-- [LoRA Paper](https://arxiv.org/abs/2106.09685)
-- [LangChain Documentation](https://python.langchain.com/)
-- [ChromaDB Documentation](https://docs.trychroma.com/)
-- [Hugging Face PEFT](https://huggingface.co/docs/peft)
-- [Unsloth GitHub](https://github.com/unslothai/unsloth)
+Choose the appropriate environment based on your organization's requirements:
+
+| Factor | Google Colab | AWS EC2 G4dn |
+|--------|--------------|--------------|
+| Cost | Free | $0.16-0.53/hour |
+| Setup Time | Instant | 15-30 minutes |
+| Data Privacy | Google infrastructure | Your AWS account |
+| Network Access | Public internet only | Private VPC supported |
+| Session Persistence | Limited (disconnects) | Persistent until stopped |
+| GPU Availability | Not guaranteed | Guaranteed (dedicated) |
+| Compliance | Limited | FedRAMP, HIPAA capable |
+| Best For | Public training, self-study | Enterprise, sensitive data |
+
+---
+
+### 4.4 PyTorch & CUDA
+
+PyTorch is the deep learning framework underlying all model operations. CUDA enables GPU acceleration on both Colab and AWS environments.
+
+- **Tensor Operations**: Multi-dimensional array computations with GPU support
+- **Automatic Differentiation**: Computes gradients for training
+- **Neural Network Modules**: Pre-built layers, loss functions, optimizers
+- **CUDA**: NVIDIA's platform allowing PyTorch to run on T4 GPU (2,560 CUDA cores)
+
+---
+
+### 4.5 Hugging Face Transformers
+
+Library providing pre-trained models and NLP tools.
+
+| Component | Class | Purpose |
+|-----------|-------|---------|
+| Model Loading | AutoModelForCausalLM | Loads TinyLlama |
+| Tokenization | AutoTokenizer | Converts text to/from tokens |
+| Training | Trainer, TrainingArguments | High-level training loop |
+| PEFT Integration | PeftModel, LoraConfig | Adds LoRA adapters |
+| Quantization | BitsAndBytesConfig | Configures 4-bit quantization |
+
+---
+
+## 5. Data Architecture
+
+The lab uses two data types: documentation for RAG retrieval and Q&A pairs for fine-tuning.
+
+### RAG Knowledge Base (data/f5_docs/)
+
+| File | Content | Purpose |
+|------|---------|---------|
+| bigip_basics.txt | BIG-IP architecture and concepts | Foundation knowledge |
+| irules_guide.txt | iRules scripting syntax | Traffic manipulation |
+| load_balancing.txt | Load balancing algorithms | Traffic distribution |
+| ssl_offloading.txt | SSL/TLS termination | Encryption handling |
+| health_monitors.txt | Service health checking | Availability monitoring |
+| troubleshooting.txt | Common issues and solutions | Problem resolution |
+
+### Fine-Tuning Data (data/training/)
+
+- **f5_qa_train.jsonl**: 150+ training examples in instruction/response format
+- **f5_qa_eval.jsonl**: 30+ held-out examples for measuring performance
+
+---
+
+## 6. Lab Module Breakdown
+
+| Module | Duration | Technologies | Outcome |
+|--------|----------|--------------|---------|
+| 01 - Setup & Base Model | 20 min | Colab/AWS, PyTorch, Transformers, Unsloth | Load model, run baseline |
+| 02 - RAG System | 45 min | LangChain, ChromaDB, sentence-transformers | Build retrieval pipeline |
+| 03 - Fine-tuning with QLoRA | 30 min | Unsloth, PEFT, LoRA, Trainer | Train domain adapter |
+| 04 - Comparison & Evaluation | 25 min | All above + matplotlib | Compare approaches |
+
+### Module 1: Setup & Base Model
+
+Configure the compute environment (Colab or AWS), install dependencies, load TinyLlama-1.1B in 4-bit quantized form, and run baseline queries to understand the model's capabilities.
+
+### Module 2: RAG System
+
+Build a complete RAG pipeline: load F5 documentation, split into chunks, create embeddings, store in ChromaDB, and wire everything together with LangChain.
+
+### Module 3: Fine-tuning with QLoRA
+
+Configure and run QLoRA fine-tuning using Unsloth. Prepare training data, set hyperparameters, monitor training loss, and save the LoRA adapter (~5 min on T4).
+
+### Module 4: Comparison & Evaluation
+
+Test the same questions across three configurations: base model, base + RAG, and fine-tuned + RAG. Compare response quality.
+
+---
+
+## 7. Glossary of Terms
+
+| Term | Definition |
+|------|------------|
+| AMI | Amazon Machine Image - pre-configured virtual machine template for EC2 |
+| Attention | Mechanism allowing models to focus on relevant parts of input |
+| CUDA | NVIDIA's parallel computing platform for GPU acceleration |
+| EC2 | Amazon Elastic Compute Cloud - virtual servers in AWS |
+| Embedding | Numerical vector representation of text capturing semantic meaning |
+| Epoch | One complete pass through the entire training dataset |
+| Fine-tuning | Further training a pre-trained model on task-specific data |
+| G4dn | AWS instance family with NVIDIA T4 GPUs |
+| Gradient | Mathematical derivative indicating how to adjust weights |
+| Inference | Using a trained model to generate outputs |
+| LoRA | Low-Rank Adaptation - efficient fine-tuning with small adapter matrices |
+| LLM | Large Language Model - AI trained to understand and generate language |
+| Parameter | Learnable value in a neural network |
+| Quantization | Reducing numerical precision to save memory |
+| RAG | Retrieval-Augmented Generation - enhancing LLM with retrieved context |
+| T4 GPU | NVIDIA Tesla T4 - inference-optimized GPU with 16GB VRAM |
+| Token | Basic unit of text processing, roughly a word or subword |
+| Transformer | Neural network architecture using self-attention |
+| Vector Database | Database optimized for storing and searching embedding vectors |
+| VPC | Virtual Private Cloud - isolated network in AWS |
+| VRAM | Video RAM - GPU memory for model parameters |
+
+---
+
+*End of Document*
