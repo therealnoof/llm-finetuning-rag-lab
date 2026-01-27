@@ -77,7 +77,7 @@ The login screen may take a minute or two to appear.
 
 > **Having trouble?** If you get an error, please raise your hand and an instructor will help.
 
-You may be prompted to authenticate again. If so, enter the same password.
+You may be prompted to authenticate again. If so, enter the same password or hit cancel.
 
 ![Ubuntu Authentication Dialog](../images/lab-guide/03-ubuntu-auth.png)
 
