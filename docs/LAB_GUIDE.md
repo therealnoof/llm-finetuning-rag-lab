@@ -126,7 +126,7 @@ You will run **4 notebooks in sequence**:
 | 3 | `03_FineTuning_QLoRA.ipynb` | Fine-tune with QLoRA |
 | 4 | `04_Comparison_Evaluation.ipynb` | Compare and evaluate results |
 
-Double-click on the first notebook to open it:
+The first notebook should already be loaded for you if not double-click on the first notebook to open it:
 
 ![Module 1 Notebook Open](../images/lab-guide/06-module1-notebook.png)
 
