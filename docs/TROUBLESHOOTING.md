@@ -39,6 +39,37 @@ This guide covers common issues encountered during the F5 AI Technical Assistant
 # Restart runtime after installation
 ```
 
+### Issue: torchao C++ extensions warning (Local Setup)
+
+**Symptoms:**
+```
+Skipping import of cpp extensions due to incompatible torch version 2.10.0+cu128 for torchao version 0.15.0
+Please see https://github.com/pytorch/ao/issues/2919 for more info
+```
+
+**What this means:** This is a **warning, not an error**. The `torchao` package (a dependency of Unsloth) has C++ extensions that aren't compatible with your PyTorch version. Python fallbacks will be used instead.
+
+**Can I ignore it?** **Yes.** The lab will run successfully. You may see slightly slower performance without the C++ optimizations, but functionality is not affected.
+
+**Verify it's working:**
+```python
+import torch
+print(torch.cuda.is_available())  # Should be True
+print(torch.cuda.get_device_name(0))  # Should show your GPU
+```
+
+**Optional fix (if you want to eliminate the warning):**
+```bash
+# Option 1: Downgrade to a more compatible PyTorch + CUDA combination
+pip uninstall torch torchvision torchaudio -y
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Option 2: Update torchao to latest version
+pip install --upgrade torchao
+```
+
+**Note:** This commonly occurs with newer PyTorch versions (2.10+) or CUDA 12.8. The PyTorch 2.x + CUDA 12.1 combination has the best compatibility with current Unsloth/torchao releases.
+
 ### Issue: Colab session disconnected
 
 **Symptoms:** Runtime disconnected, variables lost.
