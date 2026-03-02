@@ -105,6 +105,8 @@ Go back to your Firefox browser and click on the **Jupyter** favorite link. You 
 
 ![JupyterLab Interface](../images/lab-guide/05-jupyterlab-interface.png)
 
+> **Token expired?** If Jupyter prompts you for a token instead of loading the interface, the bookmarked URL's token has expired. Go back to your terminal where the Jupyter server is running and look for the message that says **"Or copy and paste one of these URLs:"** — click on one of those links. This will open JupyterLab with a fresh, valid token.
+
 ---
 
 ## Navigating JupyterLab
