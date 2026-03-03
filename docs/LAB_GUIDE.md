@@ -107,31 +107,29 @@ You may be prompted to authenticate again. If so, enter the same password or hit
 
 ![Ubuntu Authentication Dialog](../images/lab-guide/03-ubuntu-auth.png)
 
-#### Step 3: Start Jupyter Lab
+#### Step 3: Open JupyterLab in Browser
 
-We need to do a couple of things to get started:
+The Jupyter Lab server starts automatically on boot — no manual setup is needed.
 
-1. **Open Firefox browser** (the Jupyter Notebook link is bookmarked)
-2. **Open a Terminal session** and run the following commands:
+1. **Open Firefox browser**
+2. Navigate to `http://localhost:8888/lab`
 
-```bash
-sudo su
-cd /root/llm-finetuning-rag-lab
-source venv/bin/activate
-jupyter lab --allow-root
-```
-
-After running these commands, you should see a successful Jupyter server spin up:
-
-![Terminal showing Jupyter server running successfully](../images/lab-guide/04-jupyter-server-terminal.png)
-
-#### Step 4: Open JupyterLab in Browser
-
-Go back to your Firefox browser and click on the **Jupyter** favorite link. You should see a screen like this:
+You should see the JupyterLab interface:
 
 ![JupyterLab Interface](../images/lab-guide/05-jupyterlab-interface.png)
 
-> **Token expired?** If Jupyter prompts you for a token instead of loading the interface, the bookmarked URL's token has expired. Go back to your terminal where the Jupyter server is running and look for the message that says **"Or copy and paste one of these URLs:"** — click on one of those links. This will open JupyterLab with a fresh, valid token.
+> **Jupyter not loading?** If the server is not running, you can start it manually. Open a Terminal and run:
+>
+> ```bash
+> sudo su
+> cd /root/llm-finetuning-rag-lab
+> source venv/bin/activate
+> jupyter lab --allow-root
+> ```
+>
+> After running these commands, you should see a successful Jupyter server spin up:
+>
+> ![Terminal showing Jupyter server running successfully](../images/lab-guide/04-jupyter-server-terminal.png)
 
 ---
 
