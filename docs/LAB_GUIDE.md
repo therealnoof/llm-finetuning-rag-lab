@@ -58,18 +58,44 @@ We use **Jupyter Notebook** for code execution. Jupyter Notebook is an easy way 
 
 ## Getting Started
 
-### Step 1: Access Your Lab Environment
+There are **two ways** to access the lab environment. **Option A (Browser Access)** is recommended — it requires no software installation. Use **Option B (RDP)** if you prefer a full desktop experience.
 
-Log into your UDF lab. Your instructor will provide the password location.
+### Option A: Browser Access (Recommended)
+
+The Jupyter Lab server runs automatically on the lab instance. No software installation is required — just a web browser.
+
+#### Step 1: Access Jupyter Lab
+
+1. Log into your UDF lab. Your instructor will provide the password location.
+2. Find the **T4 NVIDIA GPU Enabled** system
+3. Click **Access → Jupyter**
+
+![UDF Lab Access - Click Jupyter on the T4 NVIDIA GPU system](../images/lab-guide/15-udf-jupyter-access.png)
+
+JupyterLab will open directly in your browser. No login or token is required.
+
+> **Having trouble?** If the page doesn't load, wait a moment and refresh. The Jupyter server starts automatically on boot and may take a minute after the instance starts. If it still doesn't load, raise your hand and an instructor will help.
+
+Now skip ahead to **[Navigating JupyterLab](#navigating-jupyterlab)**.
+
+---
+
+### Option B: RDP Access (Alternative)
+
+Use this method if you prefer a full Ubuntu desktop experience. You will need an RDP client installed on your machine.
 
 > **Note:** We are using RDP for this Linux box, so you will need a Windows RDP client (or compatible alternative).
+
+#### Step 1: Access Your Lab Environment
+
+Log into your UDF lab. Your instructor will provide the password location.
 
 1. Find the **T4 NVIDIA GPU Enabled** system
 2. Click **Access → RDP**
 
 ![UDF Lab Access - Click RDP on the T4 NVIDIA GPU system](../images/lab-guide/01-udf-access-rdp.png)
 
-### Step 2: Log Into the Desktop
+#### Step 2: Log Into the Desktop
 
 The login screen may take a minute or two to appear.
 
@@ -81,7 +107,7 @@ You may be prompted to authenticate again. If so, enter the same password or hit
 
 ![Ubuntu Authentication Dialog](../images/lab-guide/03-ubuntu-auth.png)
 
-### Step 3: Start Jupyter Lab
+#### Step 3: Start Jupyter Lab
 
 We need to do a couple of things to get started:
 
@@ -99,7 +125,7 @@ After running these commands, you should see a successful Jupyter server spin up
 
 ![Terminal showing Jupyter server running successfully](../images/lab-guide/04-jupyter-server-terminal.png)
 
-### Step 4: Open JupyterLab in Browser
+#### Step 4: Open JupyterLab in Browser
 
 Go back to your Firefox browser and click on the **Jupyter** favorite link. You should see a screen like this:
 
@@ -237,6 +263,7 @@ You may be surprised to learn that it takes **very little code** to run these co
 
 | Problem | Solution |
 |---------|----------|
+| Jupyter won't load in browser (Option A) | Wait a minute and refresh — the server starts automatically on boot but may take a moment |
 | Code won't run | Check that you're using the **LLM Training Lab** kernel |
 | Import errors | Restart the kernel and run cells from the beginning |
 | GPU not detected | Verify with `torch.cuda.is_available()` — should return `True` |
